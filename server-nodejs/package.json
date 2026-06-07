@@ -17,7 +17,8 @@
     "form-data": "^4.0.0",
     "groq-sdk": "^0.7.0",
     "qrcode": "^1.5.4",
-    "whatsapp-web.js": "^1.26.0"
+    "whatsapp-web.js": "^1.26.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"
