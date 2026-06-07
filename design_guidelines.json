@@ -1,0 +1,117 @@
+{
+  "theme": "dark",
+  "archetype": "5 (Luxury)",
+  "color_palette": {
+    "background": "#080808",
+    "surface": "#111111",
+    "surface_hover": "#1a1a1a",
+    "border": "#222222",
+    "border_gold_subtle": "rgba(200, 169, 110, 0.2)",
+    "primary_accent": "#c8a96e",
+    "primary_accent_hover": "#b0955f",
+    "text_primary": "#f0ede8",
+    "text_secondary": "#999999",
+    "success": "#4CAF50",
+    "error": "#E53935",
+    "warning": "#FFB300",
+    "info": "#29B6F6"
+  },
+  "typography": {
+    "fonts": {
+      "display": "Bebas Neue, sans-serif",
+      "body": "Outfit, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "hierarchy": {
+      "h1": "text-5xl tracking-tight leading-none uppercase font-display",
+      "h2": "text-3xl tracking-tight leading-tight uppercase font-display",
+      "h3": "text-xl font-medium tracking-wide text-primary-accent font-display uppercase",
+      "body_large": "text-base leading-relaxed text-text-primary",
+      "body": "text-sm leading-relaxed text-text-secondary",
+      "caption": "text-xs tracking-wider uppercase text-text-secondary",
+      "code": "text-xs font-mono text-text-primary bg-surface p-1 rounded"
+    }
+  },
+  "layout_and_spacing": {
+    "sidebar": "w-64 fixed h-full border-r border-border bg-background z-40 md:relative md:translate-x-0 transition-transform",
+    "content_area": "flex-1 ml-0 md:ml-64 p-4 md:p-8 bg-background min-h-screen",
+    "grid_system": {
+      "bento_dashboard": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6",
+      "chat_playground": "grid grid-cols-1 lg:grid-cols-3 gap-6"
+    },
+    "spacing_scale": "p-1, p-2, p-4, p-6, p-8, p-12",
+    "container_padding": "p-6"
+  },
+  "components": {
+    "cards": {
+      "base": "bg-surface border border-border p-6",
+      "hover": "hover:border-primary-accent hover:border-opacity-50 transition-colors duration-300",
+      "radius": "rounded-none"
+    },
+    "buttons": {
+      "primary": "bg-primary-accent text-background px-6 py-2 uppercase font-display tracking-wider hover:bg-primary-accent-hover transition-colors",
+      "secondary": "border border-border text-text-primary px-6 py-2 uppercase font-display tracking-wider hover:border-primary-accent transition-colors",
+      "ghost": "text-text-secondary hover:text-primary-accent transition-colors",
+      "radius": "rounded-none"
+    },
+    "inputs": {
+      "base": "bg-surface border border-border text-text-primary p-3 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent transition-all outline-none w-full",
+      "radius": "rounded-none"
+    },
+    "badges": {
+      "base": "px-2 py-1 text-xs uppercase tracking-wider border",
+      "active": "border-primary-accent text-primary-accent bg-primary-accent/10",
+      "inactive": "border-border text-text-secondary"
+    },
+    "sidebar_links": {
+      "base": "flex items-center gap-3 px-4 py-3 text-sm text-text-secondary hover:text-primary-accent hover:bg-surface transition-all",
+      "active": "text-primary-accent bg-surface border-l-2 border-primary-accent"
+    },
+    "toast": "bg-surface border border-border text-text-primary p-4 rounded-none shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "stroke-width: 1.5, text-current"
+  },
+  "motion": {
+    "hover": "transition-all duration-300 ease-out",
+    "drawer": "transition-transform duration-300 ease-in-out",
+    "toast": "animate-in slide-in-from-bottom-5"
+  },
+  "media": {
+    "chat_avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1564557287817-3785e38ec1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxzdHJlZXR3ZWFyJTIwaG9vZGllJTIwYmxhY2slMjBiYWNrZ3JvdW5kJTIwcHJlbWl1bXxlbnwwfHx8fDE3ODA4NDM2MTN8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Customer Avatar",
+        "description": "Customer in grey hoodie"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1614214191247-5b2d3a734f1b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHw0fHxzdHJlZXR3ZWFyJTIwaG9vZGllJTIwYmxhY2slMjBiYWNrZ3JvdW5kJTIwcHJlbWl1bXxlbnwwfHx8fDE3ODA4NDM2MTN8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Customer Avatar",
+        "description": "Customer in black and white hoodie"
+      }
+    ]
+  },
+  "testing_attributes": {
+    "instruction": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case based on their role.",
+    "examples": {
+      "submit_btn": "data-testid=\"save-config-button\"",
+      "sidebar_link": "data-testid=\"nav-overview-link\"",
+      "chat_input": "data-testid=\"test-chat-input\"",
+      "model_selector": "data-testid=\"model-selector-dropdown\"",
+      "toggle_bot": "data-testid=\"bot-status-toggle\""
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color palette. No teal, no purple. Use only deep blacks, whites, and gold.",
+    "Ensure all components have 'rounded-none' for sharp, editorial edges, matching luxury streetwear aesthetic.",
+    "Implement the layout as mobile-first. The sidebar MUST be a drawer on mobile screens (<768px), and fixed on desktop.",
+    "For typography, use Bebas Neue for all headings (H1, H2, H3) and Outfit for body text. JetBrains Mono for the logs area.",
+    "The Dashboard must contain 4 specific KPI cards: Messages today, Unique clients, Products viewed, Resolution rate.",
+    "Include a live log panel with monospace font and color-coded statuses (INFO, SUCCESS, WARN, ERROR).",
+    "Use Lucide React icons. Emojis are strictly forbidden.",
+    "Ensure input elements have a distinct focus state featuring the gold accent color.",
+    "All files created must be .js/.jsx, not .tsx.",
+    "Add 'data-testid' to every interactive element for testing."
+  ]
+}
