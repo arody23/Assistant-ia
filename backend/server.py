@@ -22,6 +22,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from groq import Groq
+from supabase import create_client, Client as SupabaseClient
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -31,7 +32,14 @@ GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.1-8b-instant")
 GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.3-70b-versatile")
 GROQ_WHISPER_MODEL = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3")
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+supa: SupabaseClient | None = (
+    create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    if SUPABASE_URL and SUPABASE_SERVICE_KEY else None
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("vsm-playground")
@@ -68,6 +76,29 @@ async def supabase_schema():
     if not sql_path.exists():
         raise HTTPException(404, "Schema file not found")
     return sql_path.read_text(encoding="utf-8")
+
+
+@api.get("/supabase/check")
+async def supabase_check():
+    """Diagnostic : vérifie quelles tables existent dans Supabase (via service_role)."""
+    if not supa:
+        raise HTTPException(500, "SUPABASE_SERVICE_KEY non configurée côté backend")
+    tables = ["bot_config", "conversations", "messages", "logs", "whatsapp_sessions"]
+    found = []
+    missing = []
+    for t in tables:
+        try:
+            supa.table(t).select("*", head=True, count="exact").limit(1).execute()
+            found.append(t)
+        except Exception:
+            missing.append(t)
+    return {
+        "ok": len(missing) == 0,
+        "found": found,
+        "missing": missing,
+        "total": len(tables),
+        "complete": f"{len(found)}/{len(tables)}",
+    }
 
 
 def _call_groq(messages, model, max_tokens, temperature):
