@@ -2,24 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* VSM Collection — Luxury Streetwear Theme */
+/* VSM Collection — Black / White / Red Premium */
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --vsm-black: #080808;
-  --vsm-void: #0d0d0d;
-  --vsm-surface: #111111;
-  --vsm-surface-2: #161616;
-  --vsm-border: #222222;
-  --vsm-border-strong: #2a2a2a;
-  --vsm-gold: #c8a96e;
-  --vsm-gold-hover: #d9bb7e;
-  --vsm-gold-soft: rgba(200, 169, 110, 0.12);
-  --vsm-cream: #f0ede8;
-  --vsm-grey: #8a8680;
-  --vsm-grey-2: #555049;
+  --vsm-black: #0a0a0a;
+  --vsm-void: #050505;
+  --vsm-surface: #141414;
+  --vsm-surface-2: #1a1a1a;
+  --vsm-border: #232323;
+  --vsm-border-strong: #333333;
+  --vsm-white: #ffffff;
+  --vsm-cream: #f4f4f4;
+  --vsm-grey: #9a9a9a;
+  --vsm-grey-2: #5a5a5a;
+
+  --vsm-red: #e11d2f;
+  --vsm-red-hover: #c01624;
+  --vsm-red-deep: #8c1019;
+  --vsm-red-soft: rgba(225, 29, 47, 0.12);
+  --vsm-red-glow: rgba(225, 29, 47, 0.45);
+
   --vsm-green: #4ade80;
-  --vsm-red: #ef4444;
   --vsm-orange: #f59e0b;
   --vsm-blue: #60a5fa;
 
@@ -30,25 +34,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 3.1%;
-    --foreground: 36 22% 92%;
-    --card: 0 0% 6.7%;
-    --card-foreground: 36 22% 92%;
-    --popover: 0 0% 6.7%;
-    --popover-foreground: 36 22% 92%;
-    --primary: 36 47% 61%;
-    --primary-foreground: 0 0% 5%;
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 96%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 354 76% 50%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 13%;
-    --secondary-foreground: 36 22% 92%;
+    --secondary-foreground: 0 0% 96%;
     --muted: 0 0% 10%;
-    --muted-foreground: 36 8% 60%;
-    --accent: 36 47% 61%;
-    --accent-foreground: 0 0% 5%;
-    --destructive: 0 84% 60%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 354 76% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 354 76% 50%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 14%;
     --input: 0 0% 14%;
-    --ring: 36 47% 61%;
+    --ring: 354 76% 50%;
     --radius: 0px;
   }
   * { @apply border-border; }
@@ -60,6 +64,7 @@
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
   }
 }
 
@@ -70,48 +75,44 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
-  opacity: 0.035;
+  opacity: 0.025;
   z-index: 1;
   mix-blend-mode: overlay;
 }
 
-/* Typography utilities */
 .font-display { font-family: var(--font-display); letter-spacing: 0.02em; }
 .font-body { font-family: var(--font-body); }
 .font-mono { font-family: var(--font-mono); }
 
-/* Scrollbars */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--vsm-void); }
 ::-webkit-scrollbar-thumb { background: var(--vsm-border-strong); }
-::-webkit-scrollbar-thumb:hover { background: var(--vsm-gold); }
+::-webkit-scrollbar-thumb:hover { background: var(--vsm-red); }
 
-/* Selection */
-::selection { background: var(--vsm-gold); color: var(--vsm-black); }
+::selection { background: var(--vsm-red); color: var(--vsm-white); }
 
-/* Entrance animations */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-up { animation: fade-up .4s ease-out both; }
 
-@keyframes pulse-gold {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(200,169,110,0.6); }
-  50% { box-shadow: 0 0 0 6px rgba(200,169,110,0); }
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 var(--vsm-red-glow); }
+  50% { box-shadow: 0 0 0 8px rgba(225,29,47,0); }
 }
-.pulse-gold { animation: pulse-gold 2s infinite; }
+.pulse-red { animation: pulse-red 2s infinite; }
 
-/* Custom utility classes used across the dashboard */
-.gold-text { color: var(--vsm-gold); }
-.gold-border { border-color: var(--vsm-gold) !important; }
+.red-text { color: var(--vsm-red); }
+.red-border { border-color: var(--vsm-red) !important; }
 .hairline { border-color: var(--vsm-border) !important; }
-.hairline-strong { border-color: var(--vsm-border-strong) !important; }
 .surface { background: var(--vsm-surface); }
 .surface-2 { background: var(--vsm-surface-2); }
 
-/* Focus ring override (gold) */
 *:focus-visible {
-  outline: 1px solid var(--vsm-gold);
+  outline: 1px solid var(--vsm-red);
   outline-offset: 1px;
 }
+
+/* Mobile-safe: prevent any horizontal overflow inside main */
+main, header, aside, section, div { max-width: 100%; }

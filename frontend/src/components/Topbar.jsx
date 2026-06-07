@@ -3,32 +3,32 @@ import { Menu, Power, RefreshCw } from "lucide-react";
 export default function Topbar({ title, crumb, botActive, onToggleBot, onOpenSidebar }) {
   return (
     <header
-      className="sticky top-0 z-20 h-16 border-b border-[var(--vsm-border)] bg-[var(--vsm-black)]/85 backdrop-blur-xl
-                 flex items-center justify-between px-4 sm:px-6 lg:px-10"
+      className="sticky top-0 z-20 h-14 sm:h-16 border-b border-[var(--vsm-border)] bg-[var(--vsm-black)]/85 backdrop-blur-xl
+                 flex items-center justify-between gap-2 px-3 sm:px-6 lg:px-10"
       data-testid="topbar"
     >
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
         <button
-          className="md:hidden text-[var(--vsm-grey)] hover:text-[var(--vsm-gold)]"
+          className="md:hidden text-[var(--vsm-grey)] hover:text-[var(--vsm-red)] shrink-0 p-1"
           onClick={onOpenSidebar}
           data-testid="open-sidebar-btn"
         >
-          <Menu size={20} />
+          <Menu size={22} />
         </button>
-        <div className="min-w-0">
-          <div className="font-display text-2xl tracking-wider leading-none uppercase text-[var(--vsm-cream)] truncate">
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-base sm:text-2xl tracking-wider leading-none uppercase text-[var(--vsm-white)] truncate">
             {title}
           </div>
-          <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--vsm-grey)] mt-1 truncate">
-            VSM Collection · {crumb}
+          <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.18em] sm:tracking-[0.22em] text-[var(--vsm-grey)] mt-0.5 sm:mt-1 truncate">
+            VSM · {crumb}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <button
           onClick={() => window.location.reload()}
-          className="hidden sm:flex items-center gap-2 px-3 py-2 border border-[var(--vsm-border-strong)] text-[var(--vsm-grey)] hover:text-[var(--vsm-gold)] hover:border-[var(--vsm-gold)] transition-colors text-xs uppercase tracking-wider"
+          className="hidden sm:flex items-center gap-2 px-3 py-2 border border-[var(--vsm-border-strong)] text-[var(--vsm-grey)] hover:text-[var(--vsm-red)] hover:border-[var(--vsm-red)] transition-colors text-xs uppercase tracking-wider"
           data-testid="topbar-refresh-btn"
         >
           <RefreshCw size={14} /> Refresh
@@ -36,12 +36,12 @@ export default function Topbar({ title, crumb, botActive, onToggleBot, onOpenSid
         <button
           onClick={onToggleBot}
           data-testid="bot-status-toggle"
-          className={`flex items-center gap-2 px-4 py-2 border text-xs uppercase tracking-wider transition-colors
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 border text-[10px] sm:text-xs uppercase tracking-wider transition-colors
             ${botActive
-              ? "bg-[var(--vsm-gold)] border-[var(--vsm-gold)] text-[var(--vsm-black)] hover:bg-[var(--vsm-gold-hover)]"
-              : "border-[var(--vsm-red)] text-[var(--vsm-red)] hover:bg-[var(--vsm-red)] hover:text-white"}`}
+              ? "bg-[var(--vsm-red)] border-[var(--vsm-red)] text-[var(--vsm-white)] hover:bg-[var(--vsm-red-hover)]"
+              : "border-[var(--vsm-grey-2)] text-[var(--vsm-grey)] hover:border-[var(--vsm-red)] hover:text-[var(--vsm-red)]"}`}
         >
-          <Power size={14} /> {botActive ? "Bot ON" : "Bot OFF"}
+          <Power size={13} /> {botActive ? "ON" : "OFF"}
         </button>
       </div>
     </header>
