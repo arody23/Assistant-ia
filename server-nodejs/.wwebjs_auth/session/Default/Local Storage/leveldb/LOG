@@ -1,2 +1,2 @@
-2026/06/07-18:09:06.051 6ca Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/Local Storage/leveldb since it was missing.
-2026/06/07-18:09:06.060 6ca Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/Local Storage/leveldb/MANIFEST-000001
+2026/06/07-18:13:09.772 7fd Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/Local Storage/leveldb since it was missing.
+2026/06/07-18:13:09.782 7fd Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/Local Storage/leveldb/MANIFEST-000001

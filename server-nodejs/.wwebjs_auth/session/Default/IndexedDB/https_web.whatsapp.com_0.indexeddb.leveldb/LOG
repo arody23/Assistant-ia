@@ -1,2 +1,2 @@
-2026/06/07-18:09:08.223 6a1 Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
-2026/06/07-18:09:08.228 6a1 Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/07-18:13:11.626 7cd Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
+2026/06/07-18:13:11.631 7cd Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001

@@ -1,2 +1,2 @@
-2026/06/07-18:09:06.363 6a3 Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/shared_proto_db/metadata since it was missing.
-2026/06/07-18:09:06.371 6a3 Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/shared_proto_db/metadata/MANIFEST-000001
+2026/06/07-18:13:09.829 7cd Creating DB /app/server-nodejs/.wwebjs_auth/session/Default/shared_proto_db/metadata since it was missing.
+2026/06/07-18:13:09.837 7cd Reusing MANIFEST /app/server-nodejs/.wwebjs_auth/session/Default/shared_proto_db/metadata/MANIFEST-000001
