@@ -119,10 +119,19 @@ function SchemaSetup({ error, onRetry }) {
   const runCheck = async () => {
     setChecking(true);
     try {
-      const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/supabase/check`);
-      const j = await r.json();
+      const tableNames = Object.keys(tableLabels);
+      const found = [];
+      for (const t of tableNames) {
+        const { error } = await supabase.from(t).select("*", { head: true, count: "exact" }).limit(1);
+        if (!error) found.push(t);
+      }
+      const j = {
+        ok: found.length === tableNames.length,
+        complete: `${found.length}/${tableNames.length}`,
+        found,
+      };
       setCheck(j);
-      if (j.ok) { onRetry(); }
+      if (j.ok) onRetry();
     } catch {} finally { setChecking(false); }
   };
 
@@ -130,7 +139,10 @@ function SchemaSetup({ error, onRetry }) {
 
   const copySql = async () => {
     try {
-      const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/supabase-schema.sql`);
+      const r = await fetch(
+        "https://raw.githubusercontent.com/arody23/Assistant-ia/main/server-nodejs/supabase-schema.sql"
+      );
+      if (!r.ok) throw new Error("fetch failed");
       const sql = await r.text();
       await navigator.clipboard.writeText(sql);
       setCopied(true);
