@@ -1,6 +1,9 @@
 (function () {
   const cfg = window.VSM_CHAT || {};
-  const apiUrl = (cfg.apiUrl || "").replace(/\/$/, "");
+  let apiUrl = (cfg.apiUrl || "").replace(/\/$/, "");
+  if (apiUrl.startsWith("http://") && !/^http:\/\/localhost(:\d+)?$/i.test(apiUrl)) {
+    apiUrl = apiUrl.replace(/^http:\/\//i, "https://");
+  }
   if (!apiUrl) {
     console.warn("[VSM Chat] window.VSM_CHAT.apiUrl manquant");
     return;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, OutlineButton, Pill, EmptyState } from "@/components/Primitives";
 import { Smartphone, CheckCircle2, AlertCircle, Loader2, QrCode, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
+import { getNodeUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
 const STATUS_LABEL = {
@@ -23,7 +24,7 @@ export default function Connexion({ session, reloadAll }) {
     if (!window.confirm("Réinitialiser la session ? Tu devras re-scanner le QR.")) return;
     setResetting(true);
     try {
-      const nodeUrl = process.env.REACT_APP_NODE_URL || "http://localhost:3002";
+      const nodeUrl = getNodeUrl() || "http://localhost:3002";
       const r = await fetch(`${nodeUrl}/api/reconnect`, { method: "POST" });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || `Erreur serveur (${r.status})`);

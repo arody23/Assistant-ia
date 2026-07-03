@@ -1,9 +1,10 @@
 import { Card, OutlineButton, Field, Input } from "@/components/Primitives";
 import { Copy, MessageCircle } from "lucide-react";
+import { getNodeUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function Widget({ config }) {
-  const nodeUrl = process.env.REACT_APP_NODE_URL || "https://ton-bot.up.railway.app";
+  const nodeUrl = getNodeUrl() || "https://ton-bot.up.railway.app";
   const dashboardUrl = typeof window !== "undefined" ? window.location.origin : "https://assistant-iaa.vercel.app";
 
   const embedCode = `<!-- VSM Chat Widget -->
