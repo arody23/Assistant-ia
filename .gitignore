@@ -84,7 +84,9 @@ android-sdk/
 server-nodejs/.wwebjs_auth/
 server-nodejs/.wwebjs_cache/
 
-# Env templates are tracked
+# Environment files (never commit secrets)
+.env
+.env.*
 !.env.example
 !**/.env.example
 credentials.json
