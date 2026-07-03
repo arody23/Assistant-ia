@@ -160,6 +160,14 @@ REGLES :
 
 insert into public.whatsapp_sessions (id) values ('main') on conflict (id) do nothing;
 
+-- ----------------------------------------------------------------------------
+-- MIGRATION v2 — mémoire client + widget web (idempotent)
+-- ----------------------------------------------------------------------------
+alter table public.conversations add column if not exists notes text;
+alter table public.conversations add column if not exists summary text;
+alter table public.conversations add column if not exists profile jsonb not null default '{}'::jsonb;
+alter table public.conversations add column if not exists channel text not null default 'whatsapp';
+
 -- ============================================================================
 -- DONE
 -- ============================================================================

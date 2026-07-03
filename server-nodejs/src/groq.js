@@ -116,8 +116,8 @@ Réponds UNIQUEMENT en JSON valide:
   };
 }
 
-export async function generateReply({ message, history = [], cfg, catalogContext = "", visionContext = "" }) {
-  const systemContent = buildSystemPrompt(cfg, { catalogContext, visionContext });
+export async function generateReply({ message, history = [], cfg, catalogContext = "", visionContext = "", clientContext = "" }) {
+  const systemContent = buildSystemPrompt(cfg, { catalogContext, visionContext, clientContext });
   const memMsgs = (history || []).slice(-(cfg.memory_msgs || 8));
   const messages = [{ role: "system", content: systemContent }, ...memMsgs, { role: "user", content: message }];
 

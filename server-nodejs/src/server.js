@@ -6,6 +6,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { getEnvStatus, logEnvStatus } from "./env.js";
+import { registerWebchatRoutes } from "./webchat.js";
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -58,6 +59,8 @@ async function handleReconnect(_req, res) {
 
 app.post("/api/logout", handleReconnect);
 app.post("/api/reconnect", handleReconnect);
+
+registerWebchatRoutes(app);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

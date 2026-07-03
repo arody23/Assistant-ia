@@ -4,11 +4,13 @@ import Topbar from "@/components/Topbar";
 import Overview from "@/components/sections/Overview";
 import Conversations from "@/components/sections/Conversations";
 import Instructions from "@/components/sections/Instructions";
+import SectionsPerso from "@/components/sections/SectionsPerso";
 import Connexion from "@/components/sections/Connexion";
 import ConfigApi from "@/components/sections/ConfigApi";
 import Comportement from "@/components/sections/Comportement";
 import LogsView from "@/components/sections/Logs";
 import Playground from "@/components/sections/Playground";
+import Widget from "@/components/sections/Widget";
 import { api } from "@/lib/api";
 import { supabase, TABLES } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -17,8 +19,10 @@ const SECTIONS = {
   overview: { label: "Overview", crumb: "Tableau de bord", Comp: Overview },
   conversations: { label: "Conversations", crumb: "Messages clients", Comp: Conversations },
   playground: { label: "Playground", crumb: "Test du bot", Comp: Playground },
-  instructions: { label: "Instructions IA", crumb: "Prompt & réponses", Comp: Instructions },
+  instructions: { label: "Prompt principal", crumb: "Instructions IA de base", Comp: Instructions },
+  sections: { label: "Mes sections", crumb: "Blocs personnalisés", Comp: SectionsPerso },
   connexion: { label: "WhatsApp", crumb: "QR & session", Comp: Connexion },
+  widget: { label: "Widget site", crumb: "Chat web embarqué", Comp: Widget },
   api: { label: "Config API", crumb: "Groq · Whisper", Comp: ConfigApi },
   comportement: { label: "Comportement", crumb: "Préférences", Comp: Comportement },
   logs: { label: "Logs", crumb: "Activité système", Comp: LogsView },

@@ -49,6 +49,16 @@ const dataApi = {
     await supabase.from(TABLES.messages).delete().eq("conversation_id", id);
     await supabase.from(TABLES.conversations).delete().eq("id", id);
   },
+  async updateConversation(id, patch) {
+    const { data, error } = await supabase
+      .from(TABLES.conversations)
+      .update(patch)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
 
   // ---- stats (computed live) ----
   async stats() {

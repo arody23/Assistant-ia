@@ -44,7 +44,7 @@ export async function upsertSession(patch) {
   );
 }
 
-export async function upsertConversation({ phone, name, last_message }) {
+export async function upsertConversation({ phone, name, last_message, channel = "whatsapp" }) {
   const { data: existing } = await db()
     .from("conversations").select("id, messages_count").eq("phone", phone).maybeSingle();
 
@@ -58,9 +58,19 @@ export async function upsertConversation({ phone, name, last_message }) {
     return existing.id;
   }
   const { data: created } = await db().from("conversations").insert({
-    phone, name, last_message, last_ts: new Date().toISOString(), messages_count: 2,
+    phone, name, last_message, last_ts: new Date().toISOString(), messages_count: 2, channel,
   }).select("id").single();
   return created?.id;
+}
+
+export async function getConversationByPhone(phone) {
+  const { data } = await db()
+    .from("conversations").select("*").eq("phone", phone).maybeSingle();
+  return data;
+}
+
+export async function updateConversationProfile(id, patch) {
+  return db().from("conversations").update(patch).eq("id", id);
 }
 
 export async function insertMessages(conversationId, msgs) {

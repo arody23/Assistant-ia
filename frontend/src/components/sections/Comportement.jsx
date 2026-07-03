@@ -43,6 +43,25 @@ export default function Comportement({ config, updateConfig }) {
     setKey("languages", langs.filter((_, i) => i !== idx));
   };
 
+  const customCaps = behavior.custom_capabilities || [];
+
+  const addCapability = () => {
+    setKey("custom_capabilities", [
+      ...customCaps,
+      { id: `cap_${Date.now()}`, label: "Nouvelle capacité", description: "", instruction: "", enabled: true },
+    ]);
+  };
+
+  const updateCap = (idx, patch) => {
+    const next = [...customCaps];
+    next[idx] = { ...next[idx], ...patch };
+    setKey("custom_capabilities", next);
+  };
+
+  const removeCap = (idx) => {
+    setKey("custom_capabilities", customCaps.filter((_, i) => i !== idx));
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card title="Capacités du bot" subtitle="Active / désactive chaque fonction"
@@ -58,6 +77,27 @@ export default function Comportement({ config, updateConfig }) {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card title="Capacités métier (personnalisées)" subtitle="Ajoute tes propres règles — ex: programme ambassadeur, kit boutique"
+        action={<RedButton onClick={save}>Sauver</RedButton>}>
+        <p className="text-xs text-[var(--vsm-grey)] mb-4">
+          Chaque capacité active ajoute une instruction au prompt du bot. Les capacités techniques ci-dessus restent gérées par les toggles.
+        </p>
+        <div className="space-y-3">
+          {customCaps.map((cap, i) => (
+            <div key={cap.id || i} className="border border-[var(--vsm-border)] p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Toggle checked={cap.enabled !== false} onChange={(v) => updateCap(i, { enabled: v })} />
+                <Input value={cap.label || ""} onChange={(e) => updateCap(i, { label: e.target.value })} placeholder="Nom" className="flex-1" />
+                <OutlineButton onClick={() => removeCap(i)}><X size={12} /></OutlineButton>
+              </div>
+              <Input value={cap.description || ""} onChange={(e) => updateCap(i, { description: e.target.value })} placeholder="Description courte (dashboard)" />
+              <Input value={cap.instruction || ""} onChange={(e) => updateCap(i, { instruction: e.target.value })} placeholder="Instruction pour l'IA (ex: orienter vers la boutique pour le kit)" />
+            </div>
+          ))}
+        </div>
+        <OutlineButton onClick={addCapability} className="mt-3"><Plus size={12} className="mr-1" /> Ajouter une capacité</OutlineButton>
       </Card>
 
       <Card title="Langues" subtitle="Plusieurs langues — le bot s'adapte au client"

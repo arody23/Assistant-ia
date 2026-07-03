@@ -19,9 +19,10 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory } from "./supabase.js";
+import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory, getConversationByPhone } from "./supabase.js";
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
 import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
+import { buildClientContextBlock } from "./prompt-builder.js";
 import { log } from "./logger.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
@@ -279,16 +280,23 @@ async function handleMessage(msg) {
     await sleep(replyDelayMs(cfg));
 
     // Récupérer l'historique
-    const { getSupabase } = await import("./supabase.js");
-    const sb = getSupabase();
-    const { data: existingConv } = sb
-      ? await sb.from("conversations").select("id").eq("phone", phone).maybeSingle()
-      : { data: null };
+    const existingConv = await getConversationByPhone(phone);
 
     let history = [];
     if (existingConv?.id && behavior.remember_history !== false) {
       history = await recentHistory(existingConv.id, cfg.memory_msgs || 8);
     }
+
+    const profile = existingConv?.profile || {};
+    const clientContext = buildClientContextBlock({
+      name: displayName,
+      status: profile.status,
+      tags: profile.tags,
+      kit_paid: profile.kit_paid,
+      ambassador_applied: profile.ambassador_applied,
+      summary: existingConv?.summary,
+      notes: existingConv?.notes,
+    });
 
     // Catalogue e-commerce (products + product_variants)
     let catalog = await searchCatalog(visionSearchTerms || userText, cfg);
@@ -303,6 +311,7 @@ async function handleMessage(msg) {
       cfg,
       catalogContext: catalog.context,
       visionContext,
+      clientContext,
     });
     if (!reply) return;
 

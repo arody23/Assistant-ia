@@ -92,6 +92,60 @@ export function buildStyleBlock(cfg = {}) {
   ].join(" ");
 }
 
+/** Blocs personnalisés créés depuis le dashboard (prompts + champs structurés). */
+export function buildCustomSectionsBlock(cfg = {}) {
+  const sections = getBehavior(cfg).custom_sections || [];
+  const blocks = [];
+
+  for (const section of sections) {
+    if (!section?.title) continue;
+    const fields = section.fields || [];
+    const masterToggle = fields.find((f) => f.type === "toggle" && f.key === "enabled");
+    if (masterToggle && masterToggle.value === false) continue;
+
+    const lines = [`--- ${section.title.toUpperCase()}`];
+    for (const field of fields) {
+      if (field.type === "toggle" && field.key === "enabled") continue;
+      if (field.type === "toggle" && !field.value) continue;
+      if (field.type === "list") {
+        const items = (field.value || []).filter(Boolean);
+        if (items.length) lines.push(`${field.label || field.key}: ${items.join(", ")}`);
+      } else if (field.value != null && String(field.value).trim()) {
+        lines.push(`${field.label || field.key}: ${field.value}`);
+      }
+    }
+    if (lines.length > 1) blocks.push(lines.join("\n"));
+  }
+
+  return blocks.join("\n\n");
+}
+
+/** Capacités métier ajoutées par l'admin (en plus des toggles techniques). */
+export function buildCustomCapabilitiesBlock(cfg = {}) {
+  const caps = getBehavior(cfg).custom_capabilities || [];
+  const active = caps.filter((c) => c.enabled !== false && c.instruction?.trim());
+  if (!active.length) return "";
+  return [
+    "--- CAPACITÉS MÉTIER",
+    ...active.map((c) => `• ${c.label}: ${c.instruction}`),
+  ].join("\n");
+}
+
+/** Contexte client (notes, statut, mémoire longue) injecté par conversation. */
+export function buildClientContextBlock(client = {}) {
+  if (!client || !Object.keys(client).length) return "";
+  const lines = ["--- CONTEXTE CLIENT (fiche CRM)"];
+  if (client.name) lines.push(`Nom: ${client.name}`);
+  if (client.status) lines.push(`Statut: ${client.status}`);
+  if (client.tags?.length) lines.push(`Tags: ${client.tags.join(", ")}`);
+  if (client.kit_paid === true) lines.push("Kit ambassadeur: payé en boutique");
+  if (client.kit_paid === false) lines.push("Kit ambassadeur: non payé — orienter vers la boutique physique");
+  if (client.ambassador_applied === true) lines.push("Candidature ambassadeur: déposée sur ambassadeur.vsmcollection.com");
+  if (client.summary) lines.push(`Résumé des échanges: ${client.summary}`);
+  if (client.notes) lines.push(`Notes internes: ${client.notes}`);
+  return lines.join("\n");
+}
+
 export function isNightMode(cfg = {}) {
   const b = getBehavior(cfg);
   if (!b.night_mode) return false;
@@ -99,12 +153,19 @@ export function isNightMode(cfg = {}) {
   return h >= 22 || h < 7;
 }
 
-export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext = "", extra = "" } = {}) {
-  const parts = [cfg.system_prompt || "", buildLanguageBlock(cfg), buildStyleBlock(cfg)];
+export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext = "", extra = "", clientContext = "" } = {}) {
+  const parts = [
+    cfg.system_prompt || "",
+    buildLanguageBlock(cfg),
+    buildStyleBlock(cfg),
+    buildCustomSectionsBlock(cfg),
+    buildCustomCapabilitiesBlock(cfg),
+  ];
 
   if (isNightMode(cfg)) {
     parts.push(getPrompts(cfg).night_mode || DEFAULT_PROMPTS.night_mode);
   }
+  if (clientContext) parts.push(clientContext);
   if (visionContext) parts.push(`--- ${visionContext}`);
   if (catalogContext) {
     parts.push(`--- CATALOGUE VSM (source de vérité)\n${catalogContext}`);

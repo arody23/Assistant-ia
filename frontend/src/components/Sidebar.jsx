@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, MessagesSquare, Sparkles, Smartphone,
-  Settings2, Sliders, Terminal, FlaskConical, X,
+  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe,
 } from "lucide-react";
 
 const NAV = [
@@ -10,8 +10,10 @@ const NAV = [
     { key: "playground", label: "Playground", icon: FlaskConical },
   ]},
   { section: "Configuration", items: [
-    { key: "instructions", label: "Instructions IA", icon: Sparkles },
+    { key: "instructions", label: "Prompt principal", icon: Sparkles },
+    { key: "sections", label: "Mes sections", icon: Layers },
     { key: "connexion", label: "WhatsApp", icon: Smartphone },
+    { key: "widget", label: "Widget site", icon: Globe },
     { key: "api", label: "Config API", icon: Settings2 },
     { key: "comportement", label: "Comportement", icon: Sliders },
   ]},
