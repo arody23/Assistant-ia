@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import Overview from "@/components/sections/Overview";
@@ -24,6 +24,14 @@ const SECTIONS = {
   logs: { label: "Logs", crumb: "Activité système", Comp: LogsView },
 };
 
+const SCHEMA_TABLE_LABELS = {
+  bot_config: "bot_config",
+  conversations: "conversations",
+  messages: "messages",
+  logs: "logs",
+  whatsapp_sessions: "whatsapp_sessions",
+};
+
 export default function Dashboard() {
   const [active, setActive] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -32,7 +40,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [schemaError, setSchemaError] = useState(null);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([api.getConfig(), api.getSession()]);
       setConfig(c);
@@ -43,7 +51,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -53,7 +61,7 @@ export default function Dashboard() {
       supabase.removeChannel(cfgSub);
       supabase.removeChannel(sesSub);
     };
-  }, []);
+  }, [loadAll]);
 
   const updateConfig = async (patch) => {
     try {
@@ -101,7 +109,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="text-[var(--vsm-grey)] text-sm">Chargement…</div>
           ) : schemaError || !config ? (
-            <SchemaSetup error={schemaError} onRetry={loadAll} />
+            <SchemaSetup onRetry={loadAll} />
           ) : (
             <ActiveComp config={config} session={session} updateConfig={updateConfig} reloadAll={loadAll} />
           )}
@@ -111,15 +119,15 @@ export default function Dashboard() {
   );
 }
 
-function SchemaSetup({ error, onRetry }) {
+function SchemaSetup({ onRetry }) {
   const [copied, setCopied] = useState(false);
   const [check, setCheck] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  const runCheck = async () => {
+  const runCheck = useCallback(async () => {
     setChecking(true);
     try {
-      const tableNames = Object.keys(tableLabels);
+      const tableNames = Object.keys(SCHEMA_TABLE_LABELS);
       const found = [];
       for (const t of tableNames) {
         const { error } = await supabase.from(t).select("*", { head: true, count: "exact" }).limit(1);
@@ -133,9 +141,9 @@ function SchemaSetup({ error, onRetry }) {
       setCheck(j);
       if (j.ok) onRetry();
     } catch {} finally { setChecking(false); }
-  };
+  }, [onRetry]);
 
-  useEffect(() => { runCheck(); }, []);
+  useEffect(() => { runCheck(); }, [runCheck]);
 
   const copySql = async () => {
     try {
@@ -153,11 +161,6 @@ function SchemaSetup({ error, onRetry }) {
     }
   };
 
-  const tableLabels = {
-    bot_config: "bot_config", conversations: "conversations",
-    messages: "messages", logs: "logs", whatsapp_sessions: "whatsapp_sessions",
-  };
-
   return (
     <div className="max-w-2xl mx-auto bg-[var(--vsm-surface)] border border-[var(--vsm-red)] p-5 sm:p-8">
       <div className="font-display text-xl sm:text-2xl tracking-wider uppercase text-[var(--vsm-red)]">
@@ -171,14 +174,14 @@ function SchemaSetup({ error, onRetry }) {
       </p>
 
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {Object.keys(tableLabels).map((t) => {
+        {Object.keys(SCHEMA_TABLE_LABELS).map((t) => {
           const present = check?.found?.includes(t);
           return (
             <div key={t} data-testid={`tbl-${t}`}
               className={`flex items-center gap-1.5 border px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider
                 ${present ? "border-[var(--vsm-green)] text-[var(--vsm-green)]" : "border-[var(--vsm-border-strong)] text-[var(--vsm-grey)]"}`}>
               <span>{present ? "✓" : "○"}</span>
-              <span className="truncate">{tableLabels[t]}</span>
+              <span className="truncate">{SCHEMA_TABLE_LABELS[t]}</span>
             </div>
           );
         })}

@@ -4,9 +4,7 @@
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/build",
   "env": {
-    "DISABLE_ESLINT_PLUGIN": "true",
-    "GENERATE_SOURCEMAP": "false",
-    "CI": "false"
+    "GENERATE_SOURCEMAP": "false"
   },
   "rewrites": [
     { "source": "/((?!static/).*)", "destination": "/index.html" }

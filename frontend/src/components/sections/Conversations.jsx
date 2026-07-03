@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, Input, OutlineButton, Pill, EmptyState } from "@/components/Primitives";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -11,24 +11,24 @@ export default function Conversations() {
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const items = await api.listConversations();
       setList(items);
-      if (items.length && !selected) setSelected(items[0]);
+      setSelected((prev) => (items.length && !prev ? items[0] : prev));
     } catch {}
-  };
+  }, []);
 
   useEffect(() => {
     load();
     const sub = api.onMessages(() => load());
     return () => supabase.removeChannel(sub);
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     if (!selected?.id) { setMessages([]); return; }
     api.listMessages(selected.id).then(setMessages).catch(() => setMessages([]));
-  }, [selected?.id, list]);
+  }, [selected?.id]);
 
   const filtered = list.filter(c =>
     !search ||

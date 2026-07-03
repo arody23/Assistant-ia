@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, OutlineButton, Pill, EmptyState } from "@/components/Primitives";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -10,15 +10,15 @@ const LEVEL_TONE = { INFO: "default", SUCCESS: "green", WARN: "orange", ERROR: "
 export default function LogsView() {
   const [logs, setLogs] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try { setLogs(await api.logs()); } catch {}
-  };
+  }, []);
 
   useEffect(() => {
     load();
     const sub = api.onLogs(() => load());
     return () => supabase.removeChannel(sub);
-  }, []);
+  }, [load]);
 
   const clear = async () => {
     if (!window.confirm("Effacer tous les logs ?")) return;

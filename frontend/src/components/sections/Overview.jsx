@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, Pill, EmptyState } from "@/components/Primitives";
 import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -15,19 +15,19 @@ export default function Overview() {
   const [stats, setStats] = useState(null);
   const [convs, setConvs] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [s, c] = await Promise.all([api.stats(), api.listConversations()]);
       setStats(s);
       setConvs(c.slice(0, 4));
     } catch {}
-  };
+  }, []);
 
   useEffect(() => {
     load();
     const sub = api.onMessages(() => load());
     return () => supabase.removeChannel(sub);
-  }, []);
+  }, [load]);
 
   const maxBar = stats ? Math.max(1, ...stats.weekly_series.map(d => d.value)) : 1;
   const hasData = stats && (stats.messages_today > 0 || stats.unique_clients > 0);
