@@ -3,6 +3,11 @@
   "installCommand": "npm ci --legacy-peer-deps",
   "buildCommand": "npm run build",
   "outputDirectory": "build",
+  "env": {
+    "DISABLE_ESLINT_PLUGIN": "true",
+    "GENERATE_SOURCEMAP": "false",
+    "CI": "false"
+  },
   "rewrites": [
     { "source": "/((?!static/).*)", "destination": "/index.html" }
   ]

@@ -2,15 +2,24 @@
 
 ## Configuration projet Vercel
 
+**Repo GitHub :** `arody23/Assistant-ia` (pas `assistant`).
+
 | Paramètre | Valeur |
 |-----------|--------|
-| **Root Directory** | `frontend` (recommandé) |
-| **Framework** | Create React App |
+| **Root Directory** | `frontend` ← obligatoire |
+| **Framework Preset** | Create React App (ou Other) |
 | **Build Command** | `npm run build` |
 | **Output Directory** | `build` |
 | **Install Command** | `npm ci --legacy-peer-deps` |
+| **Node.js Version** | 20.x (Settings → General) |
 
-Si tu déploies depuis la **racine** du repo sans changer Root Directory, le `vercel.json` à la racine configure tout automatiquement.
+Le nom du projet / domaine Vercel (`assistant-iaa`, etc.) est **cosmétique** — Vercel génère un sous-domaine `.vercel.app` automatiquement si le nom choisi est pris.
+
+### Les `npm warn deprecated` ne font pas échouer le build
+
+Ce sont des avertissements de dépendances anciennes (CRA 5). Cherche la vraie erreur **en bas des logs** : `Error:`, `Failed to compile`, `ERESOLVE`, ou `Command "npm run build" exited with 1`.
+
+Si tu déploies depuis la **racine** sans Root Directory, le `vercel.json` racine configure tout — mais **Root Directory = frontend** est plus simple.
 
 ## Variables d'environnement (obligatoires)
 
