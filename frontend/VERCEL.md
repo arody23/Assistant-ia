@@ -11,7 +11,7 @@
 | **Build Command** | `npm run build` |
 | **Output Directory** | `build` |
 | **Install Command** | `npm ci --legacy-peer-deps` |
-| **Node.js Version** | 20.x (Settings → General) |
+| **Node.js Version** | 24.x (Settings → General, ou via `engines` dans `package.json`) |
 
 Le nom du projet / domaine Vercel (`assistant-iaa`, etc.) est **cosmétique** — Vercel génère un sous-domaine `.vercel.app` automatiquement si le nom choisi est pris.
 
