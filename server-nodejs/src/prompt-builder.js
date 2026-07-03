@@ -200,3 +200,40 @@ export function buildArchivedHint(cfg, label, collectionsSummary) {
     COLLECTIONS: collectionsSummary,
   });
 }
+
+const DEFAULT_AMBASSADOR_PROMPT = `Tu es l'assistant du programme ambassadeur VSM Collection.
+Tu réponds UNIQUEMENT aux questions sur le programme ambassadeur (candidature, kit, rôle, avantages).
+Candidature : {APPLY_URL}
+Le kit se paie en boutique physique.`;
+
+export function buildAmbassadorSystemPrompt(cfg = {}, { clientContext = "", assetsBlock = "" } = {}) {
+  const b = getBehavior(cfg);
+  const ac = b.ambassador_chat || {};
+  const applyUrl = ac.apply_url || b.ambassador_url || "https://ambassadeur.vsmcollection.com/apply";
+  const base = substitutePlaceholders(ac.prompt || DEFAULT_AMBASSADOR_PROMPT, { APPLY_URL: applyUrl });
+
+  const parts = [
+    base,
+    buildLanguageBlock(cfg),
+    buildStyleBlock(cfg),
+    buildCustomSectionsBlock(cfg),
+    buildCustomCapabilitiesBlock(cfg),
+  ];
+  if (assetsBlock) parts.push(assetsBlock);
+  if (clientContext) parts.push(clientContext);
+
+  return substitutePlaceholders(parts.filter(Boolean).join("\n\n"), {
+    MARQUE: b.brand_name || "VSM Collection",
+    BOUTIQUE: b.shop_url || "https://www.vsmcollection.com",
+    APPLY_URL: applyUrl,
+  });
+}
+
+export function buildAssetsContextBlock(assets = []) {
+  if (!assets.length) return "";
+  const lines = ["--- APERÇUS PROGRAMME (tu peux décrire ces visuels au client)"];
+  for (const a of assets) {
+    lines.push(`• ${a.title}${a.caption ? `: ${a.caption}` : ""} [image: ${a.image_url}]`);
+  }
+  return lines.join("\n");
+}

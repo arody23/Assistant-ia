@@ -136,6 +136,68 @@ const dataApi = {
     return supabase.channel("rt_logs")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: TABLES.logs }, callback).subscribe();
   },
+
+  async listAmbassadorAssets() {
+    const { data, error } = await supabase
+      .from(TABLES.ambassador_assets)
+      .select("*")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async uploadAmbassadorAsset(file, { title, caption }) {
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("ambassador-media").upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("ambassador-media").getPublicUrl(path);
+    const { data, error } = await supabase
+      .from(TABLES.ambassador_assets)
+      .insert({ title: title || file.name, caption: caption || "", image_url: pub.publicUrl, sort_order: 0 })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteAmbassadorAsset(id) {
+    const { error } = await supabase.from(TABLES.ambassador_assets).delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  async listAmbassadorConversations() {
+    const { data, error } = await supabase
+      .from(TABLES.conversations)
+      .select("*")
+      .eq("channel", "ambassador")
+      .order("last_ts", { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async ambassadorStats() {
+    const { data, error } = await supabase
+      .from(TABLES.conversations)
+      .select("id, messages_count, interest_score")
+      .eq("channel", "ambassador");
+    if (error) throw error;
+    const rows = data || [];
+    const total = rows.length;
+    const engaged = rows.filter((r) => (r.messages_count || 0) >= 3).length;
+    const interested = rows.filter((r) => (r.interest_score || 0) > 0).length;
+    return {
+      total,
+      engaged,
+      engagement_rate: total ? Math.round((engaged / total) * 100) : 0,
+      interest_rate: total ? Math.round((interested / total) * 100) : 0,
+    };
+  },
 };
 
 // ---- Playground (Groq direct, stateless, no DB) ----

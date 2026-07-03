@@ -168,6 +168,28 @@ alter table public.conversations add column if not exists summary text;
 alter table public.conversations add column if not exists profile jsonb not null default '{}'::jsonb;
 alter table public.conversations add column if not exists channel text not null default 'whatsapp';
 
+-- ----------------------------------------------------------------------------
+-- MIGRATION v3 — chatbot ambassadeur (idempotent)
+-- ----------------------------------------------------------------------------
+create table if not exists public.ambassador_assets (
+  id          uuid primary key default uuid_generate_v4(),
+  title       text not null,
+  caption     text,
+  image_url   text not null,
+  sort_order  int not null default 0,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.conversations add column if not exists starred boolean not null default false;
+alter table public.conversations add column if not exists interest_score int not null default 0;
+
+alter table public.ambassador_assets enable row level security;
+drop policy if exists "anon all ambassador_assets" on public.ambassador_assets;
+create policy "anon all ambassador_assets" on public.ambassador_assets for all using (true) with check (true);
+
+-- Bucket Storage à créer dans Supabase Dashboard : ambassador-media (public)
+
 -- ============================================================================
 -- DONE
 -- ============================================================================

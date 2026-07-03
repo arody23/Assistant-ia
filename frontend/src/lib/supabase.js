@@ -20,4 +20,5 @@ export const TABLES = {
   messages: "messages",
   logs: "logs",
   session: "whatsapp_sessions",
+  ambassador_assets: "ambassador_assets",
 };

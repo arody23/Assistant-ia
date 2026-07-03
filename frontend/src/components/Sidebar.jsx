@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, MessagesSquare, Sparkles, Smartphone,
-  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe,
+  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe, Bot,
 } from "lucide-react";
 
 const NAV = [
@@ -14,6 +14,7 @@ const NAV = [
     { key: "sections", label: "Mes sections", icon: Layers },
     { key: "connexion", label: "WhatsApp", icon: Smartphone },
     { key: "widget", label: "Widget site", icon: Globe },
+    { key: "chatbot", label: "Chatbot ambassadeur", icon: Bot },
     { key: "api", label: "Config API", icon: Settings2 },
     { key: "comportement", label: "Comportement", icon: Sliders },
   ]},

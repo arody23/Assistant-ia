@@ -11,6 +11,7 @@ import Comportement from "@/components/sections/Comportement";
 import LogsView from "@/components/sections/Logs";
 import Playground from "@/components/sections/Playground";
 import Widget from "@/components/sections/Widget";
+import ChatbotAdmin from "@/components/sections/ChatbotAdmin";
 import { api } from "@/lib/api";
 import { supabase, TABLES } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ const SECTIONS = {
   sections: { label: "Mes sections", crumb: "Blocs personnalisés", Comp: SectionsPerso },
   connexion: { label: "WhatsApp", crumb: "QR & session", Comp: Connexion },
   widget: { label: "Widget site", crumb: "Chat web embarqué", Comp: Widget },
+  chatbot: { label: "Chatbot ambassadeur", crumb: "Programme & stats", Comp: ChatbotAdmin },
   api: { label: "Config API", crumb: "Groq · Whisper", Comp: ConfigApi },
   comportement: { label: "Comportement", crumb: "Préférences", Comp: Comportement },
   logs: { label: "Logs", crumb: "Activité système", Comp: LogsView },

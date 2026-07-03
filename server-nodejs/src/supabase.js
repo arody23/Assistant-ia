@@ -44,21 +44,31 @@ export async function upsertSession(patch) {
   );
 }
 
-export async function upsertConversation({ phone, name, last_message, channel = "whatsapp" }) {
+export async function upsertConversation({ phone, name, last_message, channel = "whatsapp", interest_delta = 0 }) {
   const { data: existing } = await db()
-    .from("conversations").select("id, messages_count").eq("phone", phone).maybeSingle();
+    .from("conversations").select("id, messages_count, interest_score").eq("phone", phone).maybeSingle();
 
   if (existing) {
-    await db().from("conversations").update({
+    const patch = {
       name: name || undefined,
       last_message,
       last_ts: new Date().toISOString(),
       messages_count: (existing.messages_count || 0) + 2,
-    }).eq("id", existing.id);
+    };
+    if (interest_delta) {
+      patch.interest_score = (existing.interest_score || 0) + interest_delta;
+    }
+    await db().from("conversations").update(patch).eq("id", existing.id);
     return existing.id;
   }
   const { data: created } = await db().from("conversations").insert({
-    phone, name, last_message, last_ts: new Date().toISOString(), messages_count: 2, channel,
+    phone,
+    name,
+    last_message,
+    last_ts: new Date().toISOString(),
+    messages_count: 2,
+    channel,
+    interest_score: interest_delta || 0,
   }).select("id").single();
   return created?.id;
 }
@@ -86,4 +96,13 @@ export async function recentHistory(conversationId, limit = 8) {
     .from("messages").select("role,content").eq("conversation_id", conversationId)
     .order("ts", { ascending: false }).limit(limit);
   return (data || []).reverse();
+}
+
+export async function getAmbassadorAssets() {
+  const { data } = await db()
+    .from("ambassador_assets")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  return data || [];
 }
