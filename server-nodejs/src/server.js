@@ -19,7 +19,7 @@ import { startWhatsApp, reconnectWhatsApp, isClientReady, getClient } from "./wh
 import { log } from "./logger.js";
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 const origins = (process.env.CORS_ORIGINS || "*").split(",").map(s => s.trim());
 app.use(cors({ origin: origins.includes("*") ? true : origins }));

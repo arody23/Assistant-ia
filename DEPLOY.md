@@ -6,32 +6,31 @@
 2. Vérifie que les tables e-commerce `products` et `product_variants` existent.
 3. Active Realtime sur `bot_config`, `whatsapp_sessions`, `messages`, `logs`.
 
-## 2. Serveur Node.js (bot WhatsApp) — obligatoire
+## 2. Bot WhatsApp — Railway (recommandé)
 
-Héberge sur un VPS Windows ou Linux avec Chrome/Chromium installé.
+Voir le guide détaillé : **`server-nodejs/RAILWAY.md`**
+
+Résumé :
+
+1. Railway → New Project → GitHub → repo `Assistant-ia`
+2. **Root Directory** : `server-nodejs`
+3. Ajoute un **Volume** monté sur `/data` (session WhatsApp persistante)
+4. Variables : `SUPABASE_*`, `GROQ_API_KEY`, `CORS_ORIGINS`, `SITE_URL`
+5. Génère un **domaine public** Railway → copie l'URL dans `REACT_APP_NODE_URL` (Vercel)
+
+Le `Dockerfile` inclut Node 20 + Chromium. Pas besoin de VPS manuel.
+
+### Alternative : VPS Linux
 
 ```bash
 cd server-nodejs
 cp .env.example .env
-# Remplis SUPABASE_URL, SUPABASE_SERVICE_KEY, GROQ_API_KEY
 npm ci
 npm start
+# PM2 : pm2 start src/server.js --name vsm-bot
 ```
 
-**Production** : utilise PM2 ou systemd pour garder le processus actif.
-
-```bash
-npm install -g pm2
-pm2 start src/server.js --name vsm-bot
-pm2 save
-```
-
-Variables importantes :
-- `PORT=3002`
-- `SITE_URL=https://www.vsmcollection.com`
-- `CORS_ORIGINS=https://ton-dashboard.vercel.app`
-
-## 3. Dashboard React
+## 3. Dashboard React — Vercel
 
 ```bash
 cd frontend

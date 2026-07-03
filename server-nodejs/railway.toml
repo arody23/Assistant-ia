@@ -1,0 +1,14 @@
+# Railway — VSM Bot WhatsApp (server-nodejs)
+# Docs: https://docs.railway.com/guides/monorepo
+#
+# Dans Railway Dashboard → Settings → Root Directory : server-nodejs
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1
