@@ -279,8 +279,11 @@ async function handleMessage(msg) {
     await sleep(replyDelayMs(cfg));
 
     // Récupérer l'historique
-    const { data: existingConv } = await (await import("./supabase.js")).supabase
-      .from("conversations").select("id").eq("phone", phone).maybeSingle();
+    const { getSupabase } = await import("./supabase.js");
+    const sb = getSupabase();
+    const { data: existingConv } = sb
+      ? await sb.from("conversations").select("id").eq("phone", phone).maybeSingle()
+      : { data: null };
 
     let history = [];
     if (existingConv?.id && behavior.remember_history !== false) {

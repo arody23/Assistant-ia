@@ -40,25 +40,37 @@ Sans volume, tu devras **re-scanner le QR** à chaque redéploiement.
 
 ---
 
-## 3. Variables d'environnement Railway
+## 3. Variables d'environnement Railway ⚠️ OBLIGATOIRE
 
-Dans **Variables** du service :
+**Sans ces variables, le build réussit mais le bot ne démarre pas.**
 
-| Variable | Valeur |
-|----------|--------|
-| `SUPABASE_URL` | `https://ehmgjgrekjoaohnnlfmw.supabase.co` |
-| `SUPABASE_SERVICE_KEY` | ta clé `service_role` (secrète) |
-| `GROQ_API_KEY` | ta clé Groq |
-| `GROQ_VISION_MODEL` | `meta-llama/llama-4-scout-17b-16e-instruct` |
-| `SITE_URL` | `https://www.vsmcollection.com` |
-| `CORS_ORIGINS` | `https://ton-dashboard.vercel.app` |
-| `WA_SESSION_DIR` | `/data/.wwebjs_auth` |
-| `WA_PROTOCOL_TIMEOUT_MS` | `300000` |
-| `WA_INIT_RETRIES` | `3` |
+1. Railway → ton service → **Variables**
+2. Clique **Raw Editor** et colle le contenu de `railway.variables.example`
+3. Remplace :
+   - `YOUR_SUPABASE_SERVICE_ROLE_KEY` → Supabase → Settings → API → **service_role** (secret)
+   - `YOUR_GROQ_API_KEY` → [console.groq.com](https://console.groq.com)
+   - `CORS_ORIGINS` → ton URL Vercel (ou `*` temporairement)
+4. Clique **Deploy** / **Redeploy**
 
-> `PORT` est injecté automatiquement par Railway — ne le définis pas manuellement.
+| Variable | Obligatoire | Où la trouver |
+|----------|-------------|---------------|
+| `SUPABASE_URL` | ✅ | Supabase → Settings → API |
+| `SUPABASE_SERVICE_KEY` | ✅ | Supabase → service_role (secret) |
+| `GROQ_API_KEY` | ✅ | console.groq.com |
+| `SITE_URL` | recommandé | https://www.vsmcollection.com |
+| `CORS_ORIGINS` | recommandé | URL Vercel du dashboard |
+| `WA_SESSION_DIR` | recommandé | `/data/.wwebjs_auth` |
 
-> **Ne pas** définir `PUPPETEER_EXECUTABLE_PATH` sur Railway — le Dockerfile utilise `/usr/bin/chromium`.
+> `PORT` est injecté par Railway — **ne pas le définir**.
+
+> **Ne pas** définir `PUPPETEER_EXECUTABLE_PATH` sur Railway.
+
+**Vérification** après deploy :
+```
+https://TON-URL-RAILWAY/api/health
+→ {"ok":true,"ready":false}  (ok:true = variables OK, ready:true après scan QR)
+→ {"ok":false,"missing":["SUPABASE_URL",...]}  (ajoute les variables manquantes)
+```
 
 ---
 

@@ -1,0 +1,12 @@
+# Colle ce bloc dans Railway → Variables → Raw Editor
+# Remplace les valeurs YOUR_* par tes vraies clés
+
+SUPABASE_URL=https://ehmgjgrekjoaohnnlfmw.supabase.co
+SUPABASE_SERVICE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+GROQ_API_KEY=YOUR_GROQ_API_KEY
+GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+SITE_URL=https://www.vsmcollection.com
+CORS_ORIGINS=https://your-dashboard.vercel.app
+WA_SESSION_DIR=/data/.wwebjs_auth
+WA_PROTOCOL_TIMEOUT_MS=300000
+WA_INIT_RETRIES=3

@@ -1,4 +1,4 @@
-import { supabase } from "./supabase.js";
+import { getSupabase } from "./supabase.js";
 
 const SITE = (process.env.SITE_URL || "https://www.vsmcollection.com").replace(/\/$/, "");
 
@@ -106,6 +106,8 @@ function buildContext(entries, query) {
  * Recherche produits + variantes dans la BDD e-commerce existante.
  */
 export async function getActiveProducts() {
+  const supabase = getSupabase();
+  if (!supabase) return [];
   const { data, error } = await supabase.from("products").select("*").eq("is_active", true);
   if (error || !data?.length) return [];
   return data;
@@ -122,6 +124,9 @@ export function buildAvailableSummary(products) {
 }
 
 export async function searchCatalog(query, cfg = {}) {
+  const supabase = getSupabase();
+  if (!supabase) return { products: [], context: "", primary: null };
+
   const { data: products, error } = await supabase
     .from("products")
     .select("*")
