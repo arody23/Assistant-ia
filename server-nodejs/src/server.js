@@ -9,12 +9,13 @@
  *    GET  /api/health     → ping
  *    GET  /api/status     → état du client WhatsApp
  *    POST /api/logout     → déconnecter et purger la session
+ *    POST /api/reconnect  → idem logout + attend le redémarrage WhatsApp
  */
 
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { startWhatsApp, logoutWhatsApp, isClientReady, getClient } from "./whatsapp-client.js";
+import { startWhatsApp, reconnectWhatsApp, isClientReady, getClient } from "./whatsapp-client.js";
 import { log } from "./logger.js";
 
 const app = express();
@@ -33,10 +34,20 @@ app.get("/api/status", (_req, res) => {
   });
 });
 
-app.post("/api/logout", async (_req, res) => {
-  await logoutWhatsApp();
-  res.json({ ok: true });
-});
+async function handleReconnect(_req, res) {
+  try {
+    // Ne pas bloquer la réponse HTTP — la reconnexion peut prendre 1-3 min (Chromium + QR)
+    reconnectWhatsApp().catch(async (e) => {
+      await log("error", `WhatsApp reconnect: ${e.message}`);
+    });
+    res.json({ ok: true, message: "Reconnexion lancée" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+}
+
+app.post("/api/logout", handleReconnect);
+app.post("/api/reconnect", handleReconnect);
 
 app.use((err, _req, res, _next) => {
   // eslint-disable-next-line no-console

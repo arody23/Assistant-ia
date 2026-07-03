@@ -20,7 +20,8 @@ import fs from "fs";
 import os from "os";
 
 import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory } from "./supabase.js";
-import { generateReply, transcribeAudio } from "./groq.js";
+import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
+import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { log } from "./logger.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
@@ -38,35 +39,28 @@ function canReply() {
 function markReply() { recentReplies.push(Date.now()); }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const randomDelay = () => minDelay + Math.floor(Math.random() * (maxDelay - minDelay));
+
+function replyDelayMs(cfg) {
+  const base = cfg?.delay_ms || 800;
+  const min = Math.max(400, base - 400);
+  const max = base + 1200;
+  return min + Math.floor(Math.random() * (max - min));
+}
 
 let client = null;
 let isReady = false;
+let initializing = false;
+let reconnecting = false;
+let startPromise = null;
+
+const initRetries = parseInt(process.env.WA_INIT_RETRIES || "3", 10);
+const initRetryDelayMs = parseInt(process.env.WA_INIT_RETRY_DELAY_MS || "15000", 10);
 
 export function getClient() { return client; }
 export function isClientReady() { return isReady; }
 
-export async function startWhatsApp() {
-  await upsertSession({ status: "disconnected", connected: false, qr_code: null });
-
-  client = new Client({
-    authStrategy: new LocalAuth({ dataPath: sessionDir }),
-    puppeteer: {
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-      ],
-    },
-  });
-
-  client.on("qr", async (qr) => {
+function bindClientEvents(waClient) {
+  waClient.on("qr", async (qr) => {
     await log("info", "Nouveau QR généré → ouvre le dashboard pour scanner");
     try {
       const dataUrl = await QRCode.toDataURL(qr, { width: 320, margin: 1 });
@@ -76,20 +70,23 @@ export async function startWhatsApp() {
     }
   });
 
-  client.on("authenticated", async () => {
+  waClient.on("authenticated", async () => {
     await log("success", "WhatsApp authentifié");
     await upsertSession({ status: "authenticated", qr_code: null });
   });
 
-  client.on("auth_failure", async (m) => {
+  waClient.on("auth_failure", async (m) => {
     isReady = false;
     await log("error", `Authentification échouée: ${m}`);
-    await upsertSession({ status: "disconnected", connected: false });
+    await upsertSession({
+      status: "disconnected", connected: false,
+      qr_code: null, phone_number: null, connected_at: null,
+    });
   });
 
-  client.on("ready", async () => {
+  waClient.on("ready", async () => {
     isReady = true;
-    const me = client.info?.wid?.user || "";
+    const me = waClient.info?.wid?.user || "";
     await log("success", `Bot WhatsApp prêt · numéro +${me}`);
     await upsertSession({
       status: "ready", connected: true,
@@ -98,17 +95,101 @@ export async function startWhatsApp() {
     });
   });
 
-  client.on("disconnected", async (reason) => {
+  waClient.on("disconnected", async (reason) => {
     isReady = false;
     await log("warn", `Déconnecté: ${reason}`);
-    await upsertSession({ status: "disconnected", connected: false });
-    // Reconnexion automatique
+    await upsertSession({
+      status: "disconnected", connected: false, qr_code: null,
+      phone_number: null, connected_at: null,
+    });
+    if (reconnecting || initializing) return;
     setTimeout(() => startWhatsApp().catch(e => log("error", `Reconnect échec: ${e.message}`)), 5000);
   });
 
-  client.on("message", handleMessage);
+  waClient.on("message", handleMessage);
+}
 
+function createClient() {
+  return new Client({
+    authStrategy: new LocalAuth({ dataPath: sessionDir }),
+    authTimeoutMs: parseInt(process.env.WA_AUTH_TIMEOUT_MS || "120000", 10),
+    // Cache local (défaut lib) — évite les échecs réseau vers GitHub (ECONNRESET)
+    webVersionCache: { type: "local" },
+    puppeteer: {
+      headless: true,
+      defaultViewport: null,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      protocolTimeout: parseInt(process.env.WA_PROTOCOL_TIMEOUT_MS || "300000", 10),
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-first-run",
+        "--disable-extensions",
+      ],
+    },
+  });
+}
+
+async function destroyClient() {
+  try { await client?.destroy(); } catch {}
+  client = null;
+  isReady = false;
+}
+
+async function startWhatsAppOnce() {
+  await upsertSession({
+    status: "initializing", connected: false, qr_code: null,
+    phone_number: null, connected_at: null,
+  });
+
+  client = createClient();
+  bindClientEvents(client);
+
+  await log("info", "Lancement de Chromium (Puppeteer)…");
   await client.initialize();
+  await log("info", "Client WhatsApp initialisé");
+}
+
+export async function startWhatsApp() {
+  if (startPromise) return startPromise;
+  startPromise = (async () => {
+    if (initializing) return;
+    initializing = true;
+
+    try {
+      for (let attempt = 1; attempt <= initRetries; attempt++) {
+        try {
+          if (attempt > 1) {
+            await destroyClient();
+            await log("info", `Nouvelle tentative WhatsApp (${attempt}/${initRetries})…`);
+          }
+          await startWhatsAppOnce();
+          return;
+        } catch (e) {
+          await log("error", `WhatsApp init (${attempt}/${initRetries}): ${e.message}`);
+          await destroyClient();
+          const isLast = attempt >= initRetries;
+          await upsertSession({
+            status: isLast ? "disconnected" : "initializing",
+            connected: false, qr_code: null,
+            phone_number: null, connected_at: null,
+          });
+          if (isLast) throw e;
+          await sleep(initRetryDelayMs);
+        }
+      }
+    } finally {
+      initializing = false;
+    }
+  })();
+
+  try {
+    await startPromise;
+  } finally {
+    startPromise = null;
+  }
 }
 
 async function handleMessage(msg) {
@@ -128,14 +209,16 @@ async function handleMessage(msg) {
     const ageSec = (Date.now() / 1000) - (msg.timestamp || 0);
     if (ageSec > 30) return;
 
-    if (!canReply()) {
+    if (!canReply() && behavior.anti_spam !== false) {
       await log("warn", `Rate limit atteint, message de ${msg.from} ignoré`);
       return;
     }
 
-    // Extraire le texte (texte ou audio transcrit)
+    // Extraire le texte (texte, audio transcrit, ou image analysée)
     let userText = "";
     let mediaType = "text";
+    let visionContext = "";
+    let visionSearchTerms = "";
 
     if (msg.type === "chat" || msg.type === "text") {
       userText = msg.body || "";
@@ -152,9 +235,36 @@ async function handleMessage(msg) {
       } finally {
         fs.unlink(tmp, () => {});
       }
+    } else if (msg.type === "image" && behavior.image_reply !== false) {
+      mediaType = "image";
+      const media = await msg.downloadMedia();
+      if (!media) return;
+      const mime = (media.mimetype || "image/jpeg").split(";")[0];
+      const buf = Buffer.from(media.data, "base64");
+      if (buf.length > 3.5 * 1024 * 1024) {
+        await log("warn", `Image trop lourde pour vision (${Math.round(buf.length / 1024)} Ko)`);
+        userText = msg.body?.trim()
+          ? `${msg.body}\n[Image reçue mais trop lourde pour analyse — précise le nom du produit]`
+          : "[Image reçue mais trop lourde pour analyse automatique — envoie le nom de la collection]";
+      } else {
+        const caption = msg.body?.trim() || "";
+        const productNames = await getActiveProductNames();
+        const collectionsSummary = buildAvailableSummary(await getActiveProducts());
+        const vision = await analyzeProductImage({
+          base64: media.data,
+          mimeType: mime,
+          cfg,
+          caption,
+          productNames,
+          collectionsSummary,
+        });
+        userText = vision.userMessage;
+        visionContext = vision.visionContext;
+        visionSearchTerms = vision.searchTerms;
+        await log("info", `Image analysée · VSM=${vision.parsed.is_vsm_product} · ${vision.parsed.product_guess || "?"}`);
+      }
     } else {
-      // image / document / autre → on répond poliment
-      userText = "[Le client a envoyé un média non supporté]";
+      userText = "[Le client a envoyé un média non supporté pour le moment]";
     }
 
     if (!userText.trim()) return;
@@ -166,7 +276,7 @@ async function handleMessage(msg) {
 
     // Indicateur "en train d'écrire" + délai humain
     try { await chat.sendStateTyping(); } catch {}
-    await sleep(randomDelay());
+    await sleep(replyDelayMs(cfg));
 
     // Récupérer l'historique
     const { data: existingConv } = await (await import("./supabase.js")).supabase
@@ -177,14 +287,39 @@ async function handleMessage(msg) {
       history = await recentHistory(existingConv.id, cfg.memory_msgs || 8);
     }
 
+    // Catalogue e-commerce (products + product_variants)
+    let catalog = await searchCatalog(visionSearchTerms || userText, cfg);
+    if (mediaType === "image" && !catalog.context) {
+      catalog = await searchCatalog("collections produits disponibles vsm", cfg);
+    }
+
     // Génération Groq
-    const { reply, model } = await generateReply({ message: userText, history, cfg });
+    const { reply, model } = await generateReply({
+      message: userText,
+      history,
+      cfg,
+      catalogContext: catalog.context,
+      visionContext,
+    });
     if (!reply) return;
 
     // Envoi
     try { await chat.clearState(); } catch {}
     await msg.reply(reply);
     markReply();
+
+    // Image produit + lien (pas si le client vient déjà d'envoyer une photo)
+    if (behavior.send_product_images !== false && catalog.primary?.image_url && mediaType !== "image") {
+      try {
+        const url = productUrl(catalog.primary);
+        const media = await MessageMedia.fromUrl(catalog.primary.image_url, { unsafeMime: true });
+        await client.sendMessage(msg.from, media, {
+          caption: `${catalog.primary.name.trim()} — ${url}`,
+        });
+      } catch (e) {
+        await log("warn", `Envoi image produit échoué: ${e.message}`);
+      }
+    }
 
     // Persistance
     const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
@@ -202,13 +337,40 @@ async function handleMessage(msg) {
 }
 
 export async function logoutWhatsApp() {
-  if (!client) return;
-  try { await client.logout(); } catch {}
-  try { await client.destroy(); } catch {}
+  await reconnectWhatsApp();
+}
+
+/** Force une nouvelle session : purge disque + redémarre WhatsApp (génère un QR). */
+export async function reconnectWhatsApp() {
+  if (reconnecting) {
+    await log("info", "Reconnexion déjà en cours");
+    return;
+  }
+
+  reconnecting = true;
+  initializing = false;
   isReady = false;
-  client = null;
-  // Wipe session folder
+  startPromise = null;
+
+  if (client) {
+    try { await client.logout(); } catch {}
+    await destroyClient();
+  }
+
   try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch {}
-  await upsertSession({ status: "disconnected", connected: false, qr_code: null, phone_number: null, connected_at: null });
-  await log("warn", "Session WhatsApp réinitialisée");
+
+  await upsertSession({
+    status: "initializing",
+    connected: false,
+    qr_code: null,
+    phone_number: null,
+    connected_at: null,
+  });
+  await log("warn", "Reconnexion WhatsApp — génération d'un nouveau QR");
+
+  try {
+    await startWhatsApp();
+  } finally {
+    reconnecting = false;
+  }
 }

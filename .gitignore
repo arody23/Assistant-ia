@@ -80,9 +80,13 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
-.env
-.env.*
-*.env
+# WhatsApp session (local only — never commit)
+server-nodejs/.wwebjs_auth/
+server-nodejs/.wwebjs_cache/
+
+# Env templates are tracked
+!.env.example
+!**/.env.example
 credentials.json
 *.key
 .credentials

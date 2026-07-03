@@ -135,9 +135,26 @@ REGLES :
     "auto_reconnect": true,
     "notify_disconnects": true,
     "language": "fr",
+    "primary_language": "fr",
+    "auto_detect_language": true,
     "tone": "premium",
     "length": "medium",
-    "emoji": "minimal"
+    "emoji": "minimal",
+    "image_reply": true,
+    "brand_name": "VSM Collection",
+    "shop_url": "https://www.vsmcollection.com",
+    "archived_collections": ["vie sur moi", "ecrit vie"],
+    "languages": [
+      {"code": "fr", "label": "Francais", "enabled": true, "reply_instruction": "Reponds en francais."},
+      {"code": "en", "label": "English", "enabled": true, "reply_instruction": "Reply in English."},
+      {"code": "ln", "label": "Lingala", "enabled": false, "reply_instruction": "Yano na Lingala."}
+    ],
+    "prompts": {
+      "vision": "Analyse les photos clients VSM. Collections en vente: {COLLECTIONS}.",
+      "discontinued": "Cette collection ({COLLECTION}) n est plus commercialisee. Propose: {COLLECTIONS}.",
+      "not_in_catalog": "Ce visuel n est pas dans notre catalogue. Oriente vers: {COLLECTIONS}.",
+      "night_mode": "Mode nuit: reponses courtes."
+    }
   }$vsm$::jsonb
 ) on conflict (id) do nothing;
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, OutlineButton, Pill, EmptyState } from "@/components/Primitives";
 import { Smartphone, CheckCircle2, AlertCircle, Loader2, QrCode, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -5,12 +6,14 @@ import { toast } from "sonner";
 
 const STATUS_LABEL = {
   disconnected: { label: "Hors-ligne", tone: "default", icon: AlertCircle },
+  initializing: { label: "Démarrage…", tone: "orange", icon: Loader2 },
   qr_pending: { label: "QR à scanner", tone: "orange", icon: QrCode },
   authenticated: { label: "Authentification…", tone: "orange", icon: Loader2 },
   ready: { label: "En ligne", tone: "green", icon: CheckCircle2 },
 };
 
-export default function Connexion({ session }) {
+export default function Connexion({ session, reloadAll }) {
+  const [resetting, setResetting] = useState(false);
   const status = session?.status || "disconnected";
   const meta = STATUS_LABEL[status] || STATUS_LABEL.disconnected;
   const StatusIcon = meta.icon;
@@ -18,14 +21,33 @@ export default function Connexion({ session }) {
 
   const handleReset = async () => {
     if (!window.confirm("Réinitialiser la session ? Tu devras re-scanner le QR.")) return;
-    await api.resetSession();
-    toast.success("Session réinitialisée. Redémarre le backend Node.js pour générer un nouveau QR.");
+    setResetting(true);
+    try {
+      const nodeUrl = process.env.REACT_APP_NODE_URL || "http://localhost:3002";
+      const r = await fetch(`${nodeUrl}/api/reconnect`, { method: "POST" });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || `Erreur serveur (${r.status})`);
+
+      toast.success("Reconnexion lancée — le QR apparaît sous 1 à 2 minutes…");
+      reloadAll?.();
+
+      for (const delay of [3000, 5000, 10000, 20000, 40000]) {
+        await new Promise((res) => setTimeout(res, delay));
+        await reloadAll?.();
+        const fresh = await api.getSession().catch(() => null);
+        if (fresh?.status === "ready" || fresh?.qr_code) break;
+      }
+    } catch (e) {
+      toast.error(e.message || "Backend Node.js injoignable sur le port 3002. Lance : cd server-nodejs && npm start");
+    } finally {
+      setResetting(false);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 sm:gap-6">
       <Card title="Session WhatsApp" subtitle="whatsapp-web.js · QR live" testid="card-wa-session"
-        action={<OutlineButton onClick={handleReset} testid="wa-reset-btn"><RefreshCw size={12} className="mr-1" /> Reset</OutlineButton>}>
+        action={<OutlineButton onClick={handleReset} disabled={resetting} testid="wa-reset-btn"><RefreshCw size={12} className={`mr-1 ${resetting ? "animate-spin" : ""}`} /> {resetting ? "Reconnexion…" : "Reset"}</OutlineButton>}>
         <div className="flex flex-col items-center text-center py-4 sm:py-6">
           <div className="w-56 h-56 sm:w-64 sm:h-64 border-2 border-[var(--vsm-red)] flex items-center justify-center bg-white p-3" data-testid="wa-qr-frame">
             {qr ? (
@@ -34,6 +56,11 @@ export default function Connexion({ session }) {
               <div className="flex flex-col items-center gap-3 text-[var(--vsm-black)]">
                 <CheckCircle2 size={56} className="text-[var(--vsm-red)]" />
                 <div className="font-display text-lg tracking-wider">SESSION ACTIVE</div>
+              </div>
+            ) : status === "initializing" || status === "authenticated" ? (
+              <div className="flex flex-col items-center gap-3 text-[var(--vsm-grey-2)]">
+                <Loader2 size={56} className="text-[var(--vsm-red)] animate-spin" />
+                <div className="text-[10px] uppercase tracking-[0.2em] text-center">Connexion WhatsApp en cours…</div>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 text-[var(--vsm-grey-2)]">
