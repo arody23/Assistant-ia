@@ -106,3 +106,12 @@ export async function getAmbassadorAssets() {
     .order("sort_order", { ascending: true });
   return data || [];
 }
+
+export async function getWhatsappMedia() {
+  const { data } = await db()
+    .from("whatsapp_media")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  return data || [];
+}

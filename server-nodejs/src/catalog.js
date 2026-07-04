@@ -12,8 +12,8 @@ function norm(s) {
 }
 
 export function productUrl(product) {
-  if (product?.slug) return `${SITE}/product/${product.slug}`;
-  return `${SITE}/products/${product.id}`;
+  if (product?.slug) return `${SITE}/produit/${product.slug}`;
+  return `${SITE}/produits/${product.id}`;
 }
 
 function formatPrice(price) {

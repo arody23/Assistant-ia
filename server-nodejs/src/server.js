@@ -8,6 +8,8 @@ import cors from "cors";
 import { getEnvStatus, logEnvStatus } from "./env.js";
 import { registerWebchatRoutes } from "./webchat.js";
 import { registerAmbassadorAssetRoutes } from "./ambassador-assets.js";
+import { registerWhatsappMediaRoutes } from "./whatsapp-assets.js";
+import { registerOrderRoutes } from "./orders.js";
 import { registerPlaygroundRoutes } from "./playground.js";
 
 const app = express();
@@ -64,6 +66,8 @@ app.post("/api/reconnect", handleReconnect);
 
 registerWebchatRoutes(app);
 registerAmbassadorAssetRoutes(app);
+registerWhatsappMediaRoutes(app);
+registerOrderRoutes(app);
 registerPlaygroundRoutes(app);
 
 app.use((err, _req, res, _next) => {

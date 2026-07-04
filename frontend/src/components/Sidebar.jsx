@@ -1,18 +1,20 @@
 import {
   LayoutDashboard, MessagesSquare, Sparkles, Smartphone,
-  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe, Bot,
+  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe, Bot, Image, ShoppingBag,
 } from "lucide-react";
 
 const NAV = [
   { section: "Principal", items: [
     { key: "overview", label: "Overview", icon: LayoutDashboard },
     { key: "conversations", label: "Conversations", icon: MessagesSquare },
+    { key: "orders", label: "Commandes", icon: ShoppingBag },
     { key: "playground", label: "Playground", icon: FlaskConical },
   ]},
   { section: "Configuration", items: [
     { key: "instructions", label: "Prompt principal", icon: Sparkles },
     { key: "sections", label: "Mes sections", icon: Layers },
     { key: "connexion", label: "WhatsApp", icon: Smartphone },
+    { key: "media", label: "Médias WhatsApp", icon: Image },
     { key: "widget", label: "Widget site", icon: Globe },
     { key: "chatbot", label: "Chatbot ambassadeur", icon: Bot },
     { key: "api", label: "Config API", icon: Settings2 },

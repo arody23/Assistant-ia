@@ -19,10 +19,12 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory, getConversationByPhone } from "./supabase.js";
+import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory, getConversationByPhone, updateConversationProfile, getWhatsappMedia } from "./supabase.js";
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
 import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { buildClientContextBlock } from "./prompt-builder.js";
+import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
+import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
@@ -53,6 +55,8 @@ let isReady = false;
 let initializing = false;
 let reconnecting = false;
 let startPromise = null;
+/** Timestamp (sec) du dernier ready — ignore les messages antérieurs (backlog au reconnect). */
+let readyAtSec = 0;
 
 const initRetries = parseInt(process.env.WA_INIT_RETRIES || "3", 10);
 const initRetryDelayMs = parseInt(process.env.WA_INIT_RETRY_DELAY_MS || "15000", 10);
@@ -87,6 +91,7 @@ function bindClientEvents(waClient) {
 
   waClient.on("ready", async () => {
     isReady = true;
+    readyAtSec = Math.floor(Date.now() / 1000);
     const me = waClient.info?.wid?.user || "";
     await log("success", `Bot WhatsApp prêt · numéro +${me}`);
     await upsertSession({
@@ -206,8 +211,15 @@ async function handleMessage(msg) {
     const chat = await msg.getChat();
     if (chat.isGroup && behavior.ignore_groups !== false) return;
 
+    // Ignorer le backlog WhatsApp au redémarrage (messages reçus pendant que le bot était OFF)
+    const msgTs = msg.timestamp || 0;
+    if (readyAtSec && msgTs < readyAtSec - 15) {
+      await log("info", `Message ignoré (antérieur au démarrage) de ${msg.from}`);
+      return;
+    }
+
     // Stale message guard
-    const ageSec = (Date.now() / 1000) - (msg.timestamp || 0);
+    const ageSec = (Date.now() / 1000) - msgTs;
     if (ageSec > 30) return;
 
     if (!canReply() && behavior.anti_spam !== false) {
@@ -320,11 +332,11 @@ async function handleMessage(msg) {
     await msg.reply(reply);
     markReply();
 
-    // Image produit — uniquement si correspondance catalogue fiable
+    // Image produit — uniquement si demande client ou première présentation de la collection
+    let profilePatch = null;
     if (
       behavior.send_product_images !== false
-      && catalog.primary?.image_url
-      && (catalog.matchScore || 0) >= 4
+      && shouldSendProductImage({ userText, catalog, profile })
       && mediaType !== "image"
     ) {
       try {
@@ -333,13 +345,29 @@ async function handleMessage(msg) {
         await client.sendMessage(msg.from, media, {
           caption: `${catalog.primary.name.trim()} — ${url}`,
         });
+        profilePatch = markProductImageSent(profile, catalog.primary);
       } catch (e) {
         await log("warn", `Envoi image produit échoué: ${e.message}`);
       }
     }
 
+    // Médias dashboard (whatsapp_media) — sélection intelligente
+    try {
+      const waMedia = await getWhatsappMedia();
+      const picked = selectAmbassadorAssets(userText, reply, waMedia);
+      for (const img of assetsToImages(picked)) {
+        const media = await MessageMedia.fromUrl(img.url, { unsafeMime: true });
+        await client.sendMessage(msg.from, media, { caption: img.caption || "" });
+      }
+    } catch (e) {
+      await log("warn", `Médias WhatsApp: ${e.message}`);
+    }
+
     // Persistance
     const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
+    if (profilePatch && existingConv?.id) {
+      await updateConversationProfile(existingConv.id, { profile: profilePatch });
+    }
     if (conversationId) {
       const ts = new Date().toISOString();
       await insertMessages(conversationId, [

@@ -12,6 +12,8 @@ import LogsView from "@/components/sections/Logs";
 import Playground from "@/components/sections/Playground";
 import Widget from "@/components/sections/Widget";
 import ChatbotAdmin from "@/components/sections/ChatbotAdmin";
+import MediaWhatsApp from "@/components/sections/MediaWhatsApp";
+import Orders from "@/components/sections/Orders";
 import { api } from "@/lib/api";
 import { supabase, TABLES } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -19,10 +21,12 @@ import { toast } from "sonner";
 const SECTIONS = {
   overview: { label: "Overview", crumb: "Tableau de bord", Comp: Overview },
   conversations: { label: "Conversations", crumb: "Messages clients", Comp: Conversations },
+  orders: { label: "Commandes", crumb: "Boutique & WhatsApp", Comp: Orders },
   playground: { label: "Playground", crumb: "Test du bot", Comp: Playground },
   instructions: { label: "Prompt principal", crumb: "Instructions IA de base", Comp: Instructions },
   sections: { label: "Mes sections", crumb: "Blocs personnalisés", Comp: SectionsPerso },
   connexion: { label: "WhatsApp", crumb: "QR & session", Comp: Connexion },
+  media: { label: "Médias WhatsApp", crumb: "Images envoyées par l'IA", Comp: MediaWhatsApp },
   widget: { label: "Widget site", crumb: "Chat web embarqué", Comp: Widget },
   chatbot: { label: "Chatbot ambassadeur", crumb: "Programme & stats", Comp: ChatbotAdmin },
   api: { label: "Config API", crumb: "Groq · Whisper", Comp: ConfigApi },

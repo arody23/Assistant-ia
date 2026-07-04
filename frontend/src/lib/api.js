@@ -273,6 +273,90 @@ const dataApi = {
       interest_rate: total ? Math.round((interested / total) * 100) : 0,
     };
   },
+
+  async listWhatsappMedia() {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Chargement échoué");
+    return data;
+  },
+
+  async uploadWhatsappMedia(file, meta) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const b64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileBase64: b64,
+        fileName: file.name,
+        mimeType: file.type,
+        ...meta,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Upload échoué");
+    return data;
+  },
+
+  async updateWhatsappMedia(id, patch) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Mise à jour échouée");
+    return data;
+  },
+
+  async reorderWhatsappMedia(orderedIds) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedIds }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Réorganisation échouée");
+    return data;
+  },
+
+  async deleteWhatsappMedia(id) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/${id}`, { method: "DELETE" });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.error || "Suppression échouée");
+    }
+  },
+
+  async listOrders() {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/orders?limit=100`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Chargement commandes échoué");
+    return data;
+  },
+
+  async updateOrder(id, patch) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/orders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Mise à jour échouée");
+    return data;
+  },
 };
 
 // ---- Playground (Groq via Node Railway, fallback Python local) ----

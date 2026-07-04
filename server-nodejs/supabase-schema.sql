@@ -215,6 +215,45 @@ drop policy if exists "Anon delete ambassador-media" on storage.objects;
 create policy "Anon delete ambassador-media" on storage.objects
   for delete using (bucket_id = 'ambassador-media');
 
+-- ----------------------------------------------------------------------------
+-- MIGRATION v5 — médias WhatsApp + config admin
+-- ----------------------------------------------------------------------------
+create table if not exists public.whatsapp_media (
+  id          uuid primary key default uuid_generate_v4(),
+  title       text not null,
+  caption     text,
+  description text,
+  keywords    text[] not null default array[]::text[],
+  image_url   text not null,
+  sort_order  int not null default 0,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+
+alter table public.whatsapp_media enable row level security;
+drop policy if exists "anon all whatsapp_media" on public.whatsapp_media;
+create policy "anon all whatsapp_media" on public.whatsapp_media for all using (true) with check (true);
+
+insert into storage.buckets (id, name, public)
+values ('whatsapp-media', 'whatsapp-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Public read whatsapp-media" on storage.objects;
+create policy "Public read whatsapp-media" on storage.objects
+  for select using (bucket_id = 'whatsapp-media');
+
+drop policy if exists "Anon insert whatsapp-media" on storage.objects;
+create policy "Anon insert whatsapp-media" on storage.objects
+  for insert with check (bucket_id = 'whatsapp-media');
+
+drop policy if exists "Anon update whatsapp-media" on storage.objects;
+create policy "Anon update whatsapp-media" on storage.objects
+  for update using (bucket_id = 'whatsapp-media');
+
+drop policy if exists "Anon delete whatsapp-media" on storage.objects;
+create policy "Anon delete whatsapp-media" on storage.objects
+  for delete using (bucket_id = 'whatsapp-media');
+
 -- ============================================================================
 -- DONE
 -- ============================================================================

@@ -7,6 +7,7 @@ GROQ_API_KEY=YOUR_GROQ_API_KEY
 GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 SITE_URL=https://www.vsmcollection.com
 CORS_ORIGINS=https://your-dashboard.vercel.app
+ADMIN_WHATSAPP_PHONE=+242067458011
 WA_SESSION_DIR=/data/.wwebjs_auth
 WA_PROTOCOL_TIMEOUT_MS=300000
 WA_INIT_RETRIES=3
