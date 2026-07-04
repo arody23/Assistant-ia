@@ -31,7 +31,8 @@
     #vsm-chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
     .vsm-msg{max-width:85%;padding:8px 12px;font-size:13px;line-height:1.45;word-break:break-word}
     .vsm-msg.user{align-self:flex-end;background:#c41e3a;color:#fff}
-    .vsm-msg.bot{align-self:flex-start;background:#1a1a1a;border:1px solid #333}
+    .vsm-msg a{color:#e85d6f;text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+    .vsm-msg a:hover{opacity:.85}
     #vsm-chat-form{display:flex;border-top:1px solid #333}
     #vsm-chat-input{flex:1;background:#111;border:none;color:#fff;padding:10px 12px;font-size:13px;outline:none}
     #vsm-chat-send{background:#c41e3a;color:#fff;border:none;padding:0 16px;cursor:pointer;font-size:13px}
@@ -64,13 +65,25 @@
 
   function render() {
     msgsEl.innerHTML = messages.map((m) =>
-      `<div class="vsm-msg ${m.role}">${escapeHtml(m.content)}</div>`
+      `<div class="vsm-msg ${m.role}">${linkifyHtml(m.content)}</div>`
     ).join("");
     msgsEl.scrollTop = msgsEl.scrollHeight;
   }
 
   function escapeHtml(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function linkifyHtml(s) {
+    const escaped = escapeHtml(s);
+    return escaped.replace(
+      /(https?:\/\/[^\s<]+[^\s<.,;:!?)}\]'"]|www\.[^\s<]+[^\s<.,;:!?)}\]'"])/gi,
+      (url) => {
+        const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        const safeHref = href.replace(/"/g, "&quot;");
+        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+      }
+    );
   }
 
   function addMsg(role, content) {

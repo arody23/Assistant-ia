@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, ChevronRight, Send } from "lucide-react";
 import { getNodeUrl } from "@/lib/utils";
+import LinkifiedText from "@/components/LinkifiedText";
 
 const NODE_URL = getNodeUrl();
 const SESSION_KEY = "vsm_ambassador_session";
@@ -135,7 +136,7 @@ export default function ChatbotAmbassador() {
                   : "bg-[var(--vsm-surface)] border-[var(--vsm-border-strong)] text-[var(--vsm-cream)] rounded-2xl rounded-bl-sm"
               }`}
             >
-              <div className="whitespace-pre-wrap break-words leading-relaxed">{m.content}</div>
+              <LinkifiedText text={m.content} className="whitespace-pre-wrap break-words leading-relaxed" />
               {m.images?.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 gap-2">
                   {m.images.map((img, j) => (
