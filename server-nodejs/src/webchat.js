@@ -19,6 +19,7 @@ import {
 } from "./prompt-builder.js";
 import { searchCatalog } from "./catalog.js";
 import { log } from "./logger.js";
+import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 
 const INTEREST_WORDS = [
   "ambassadeur", "ambassade", "candidat", "candidature", "kit", "programme",
@@ -32,11 +33,6 @@ function webPhone(sessionId, channel = "web") {
 function scoreInterest(text) {
   const q = (text || "").toLowerCase();
   return INTEREST_WORDS.reduce((n, w) => (q.includes(w) ? n + 1 : n), 0);
-}
-
-function shouldAttachImages(text) {
-  const q = (text || "").toLowerCase();
-  return /aperçu|apercu|photo|image|voir|ressemble|montre|capture|programme/.test(q);
 }
 
 async function handleChat({ req, res, channel, ambassador = false }) {
@@ -129,9 +125,8 @@ async function handleChat({ req, res, channel, ambassador = false }) {
       model = result.model;
     }
 
-    const images = ambassador && shouldAttachImages(message)
-      ? assets.slice(0, 4).map((a) => ({ url: a.image_url, caption: a.caption || a.title }))
-      : [];
+    const picked = ambassador ? selectAmbassadorAssets(message, reply, assets) : [];
+    const images = assetsToImages(picked);
 
     const conversationId = await upsertConversation({
       phone,
@@ -178,13 +173,10 @@ export function registerWebchatRoutes(app) {
       const cfg = await getConfig();
       const b = cfg.behavior || {};
       const ac = b.ambassador_chat || {};
-      const assets = await getAmbassadorAssets();
       res.json({
         brand: b.brand_name || "VSM Collection",
         welcome: ac.welcome || "Salut ! Je suis l'assistant du programme ambassadeur VSM. Pose-moi tes questions !",
-        sidebar_intro: ac.sidebar_intro || "",
         applyUrl: ac.apply_url || b.ambassador_url || "https://ambassadeur.vsmcollection.com/apply",
-        assets,
       });
     } catch (e) {
       res.status(500).json({ error: e.message });

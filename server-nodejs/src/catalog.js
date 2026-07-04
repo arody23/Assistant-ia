@@ -3,7 +3,7 @@ import { getSupabase } from "./supabase.js";
 const SITE = (process.env.SITE_URL || "https://www.vsmcollection.com").replace(/\/$/, "");
 
 const CATALOG_HINTS =
-  /\b(prix|stock|taille|couleur|produit|article|collection|commander|acheter|dispo|disponible|hoodie|t-?shirt|veste|renescentia|classic|vsm|boutique|fc|cdf|pointure)\b/i;
+  /\b(prix|stock|taille|couleur|produit|article|collection|commander|acheter|dispo|disponible|hoodie|t-?shirt|veste|renescentia|classic|classic of life|vsm|boutique|fc|cdf|pointure|slug)\b/i;
 
 const SIZES = ["3xl", "xxl", "xl", "l", "m", "s", "xs"];
 
@@ -25,11 +25,23 @@ function formatPrice(price) {
 function scoreProduct(product, query, extraKeywords = []) {
   const q = norm(query);
   const name = norm(product.name);
+  const slug = norm(product.slug || "");
   const desc = norm(product.description);
   const cat = norm(product.category);
   let score = 0;
 
-  if (name && q.includes(name.replace(/\s+/g, " "))) score += 10;
+  // Slug — priorité maximale (ex: renescentia)
+  if (slug) {
+    if (q.includes(slug)) score += 30;
+    for (const part of slug.split(/[-_\s]+/).filter((w) => w.length > 2)) {
+      if (q.includes(part)) score += 10;
+    }
+    for (const word of q.split(/\s+/).filter((w) => w.length > 3)) {
+      if (slug.includes(word)) score += 8;
+    }
+  }
+
+  if (name && q.includes(name.replace(/\s+/g, " "))) score += 12;
   if (name) {
     for (const word of name.split(/\s+/).filter((w) => w.length > 2)) {
       if (q.includes(word)) score += 4;
@@ -44,6 +56,7 @@ function scoreProduct(product, query, extraKeywords = []) {
   for (const kw of extraKeywords || []) {
     const k = norm(kw);
     if (k && q.includes(k)) score += 5;
+    if (slug && k && slug.includes(k)) score += 8;
   }
   return score;
 }
@@ -91,6 +104,7 @@ function buildContext(entries, query) {
     const totalStock = allVariants.reduce((s, v) => s + (v.stock || 0), 0);
     return [
       `• ${product.name.trim()} (id ${product.id})`,
+      product.slug ? `  Slug: ${product.slug}` : null,
       `  Prix: ${formatPrice(product.price)} | Catégorie: ${product.category || "—"}`,
       `  Stock total: ${totalStock} | Actif: ${product.is_active ? "oui" : "non"}`,
       `  Lien: ${productUrl(product)}`,
@@ -159,21 +173,26 @@ export async function searchCatalog(query, cfg = {}) {
   if (scored.length) {
     entries = scored.slice(0, 3);
   } else if (catalogQuestion) {
-    entries = products.slice(0, 5).map((p) => ({
-      product: p,
-      variants: byProduct[p.id] || [],
-      score: 0,
-    }));
+    entries = products
+      .map((p) => ({
+        product: p,
+        variants: byProduct[p.id] || [],
+        score: scoreProduct(p, query, keywords),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
   } else {
     return { products: [], context: "", primary: null };
   }
 
   const context = buildContext(entries, query);
   const primary = entries[0]?.product || null;
+  const matchScore = entries[0]?.score ?? 0;
 
   return {
     products: entries.map((e) => e.product),
     context,
     primary,
+    matchScore,
   };
 }

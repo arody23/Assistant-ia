@@ -237,14 +237,25 @@ Tu réponds UNIQUEMENT aux questions sur le programme ambassadeur (candidature, 
 Candidature : {APPLY_URL}
 Le kit se paie en boutique physique.`;
 
+function buildAmbassadorPromptBlocks(ac = {}) {
+  const blocks = [];
+  if (ac.prompt?.trim()) blocks.push(ac.prompt.trim());
+  for (const b of ac.prompt_blocks || []) {
+    if (!b?.title?.trim() || !b?.content?.trim()) continue;
+    blocks.push(`--- ${b.title.trim().toUpperCase()}\n${b.content.trim()}`);
+  }
+  return blocks.join("\n\n");
+}
+
 export function buildAmbassadorSystemPrompt(cfg = {}, { clientContext = "", assetsBlock = "" } = {}) {
   const b = getBehavior(cfg);
   const ac = b.ambassador_chat || {};
   const applyUrl = ac.apply_url || b.ambassador_url || "https://ambassadeur.vsmcollection.com/apply";
-  const base = substitutePlaceholders(ac.prompt || DEFAULT_AMBASSADOR_PROMPT, { APPLY_URL: applyUrl });
+  const base = buildAmbassadorPromptBlocks(ac) || substitutePlaceholders(DEFAULT_AMBASSADOR_PROMPT, { APPLY_URL: applyUrl });
+  const baseResolved = substitutePlaceholders(base, { APPLY_URL: applyUrl });
 
   const parts = [
-    base,
+    baseResolved,
     buildStrictKnowledgeRulesBlock(cfg),
     buildCustomSectionsBlock(cfg),
     buildCustomCapabilitiesBlock(cfg),
@@ -263,9 +274,16 @@ export function buildAmbassadorSystemPrompt(cfg = {}, { clientContext = "", asse
 
 export function buildAssetsContextBlock(assets = []) {
   if (!assets.length) return "";
-  const lines = ["--- APERÇUS PROGRAMME (tu peux décrire ces visuels au client)"];
+  const lines = [
+    "--- MÉDIAS PROGRAMME (base interne — ne pas lister spontanément)",
+    "Envoie une image UNIQUEMENT si le client demande un aperçu/photo OU si tu cites précisément un visuel ci-dessous.",
+    "Ne confonds pas les visuels : vérifie titre et mots-clés avant d'en parler.",
+  ];
   for (const a of assets) {
-    lines.push(`• ${a.title}${a.caption ? `: ${a.caption}` : ""} [image: ${a.image_url}]`);
+    const kw = (a.keywords || []).filter(Boolean).join(", ");
+    lines.push(
+      `• [${a.id}] ${a.title}${a.caption ? ` — ${a.caption}` : ""}${a.description ? ` (quand envoyer: ${a.description})` : ""}${kw ? ` [mots-clés: ${kw}]` : ""}`
+    );
   }
   return lines.join("\n");
 }

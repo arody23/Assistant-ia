@@ -7,6 +7,8 @@ import express from "express";
 import cors from "cors";
 import { getEnvStatus, logEnvStatus } from "./env.js";
 import { registerWebchatRoutes } from "./webchat.js";
+import { registerAmbassadorAssetRoutes } from "./ambassador-assets.js";
+import { registerPlaygroundRoutes } from "./playground.js";
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -61,6 +63,8 @@ app.post("/api/logout", handleReconnect);
 app.post("/api/reconnect", handleReconnect);
 
 registerWebchatRoutes(app);
+registerAmbassadorAssetRoutes(app);
+registerPlaygroundRoutes(app);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

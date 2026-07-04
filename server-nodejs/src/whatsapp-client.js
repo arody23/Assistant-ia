@@ -320,8 +320,13 @@ async function handleMessage(msg) {
     await msg.reply(reply);
     markReply();
 
-    // Image produit + lien (pas si le client vient déjà d'envoyer une photo)
-    if (behavior.send_product_images !== false && catalog.primary?.image_url && mediaType !== "image") {
+    // Image produit — uniquement si correspondance catalogue fiable
+    if (
+      behavior.send_product_images !== false
+      && catalog.primary?.image_url
+      && (catalog.matchScore || 0) >= 4
+      && mediaType !== "image"
+    ) {
       try {
         const url = productUrl(catalog.primary);
         const media = await MessageMedia.fromUrl(catalog.primary.image_url, { unsafeMime: true });

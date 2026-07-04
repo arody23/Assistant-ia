@@ -1,24 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, Textarea, RedButton, OutlineButton, Field, Input, Pill } from "@/components/Primitives";
-import { Save, Upload, Trash2, Star, ExternalLink, Copy, BarChart3 } from "lucide-react";
+import { Save, Upload, Trash2, Star, ExternalLink, Copy, BarChart3, Plus, ChevronUp, ChevronDown, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 const TABS = [
   { id: "config", label: "Prompt & lien" },
-  { id: "media", label: "Aperçus / captures" },
+  { id: "media", label: "Médias IA" },
   { id: "stats", label: "Statistiques" },
   { id: "convos", label: "Conversations" },
 ];
 
 const DEFAULT_PROMPT = `Tu es l'assistant du programme ambassadeur VSM Collection.
-Tu réponds UNIQUEMENT aux questions sur le programme ambassadeur (candidature, kit, rôle, avantages).
-Ne parle pas des produits boutique sauf si le client demande le kit.
+Tu réponds UNIQUEMENT aux questions sur le programme ambassadeur.
+Candidature : {APPLY_URL}`;
 
-Candidature : {APPLY_URL}
-Le kit ambassadeur se paie en boutique physique.
-
-Sois enthousiaste, clair et encourage à candidater quand le visiteur est intéressé.`;
+function newPromptBlock() {
+  return { id: `pb_${Date.now()}`, title: "Nouveau bloc", content: "" };
+}
 
 export default function ChatbotAdmin({ config, updateConfig }) {
   const [tab, setTab] = useState("config");
@@ -27,19 +26,20 @@ export default function ChatbotAdmin({ config, updateConfig }) {
   const [stats, setStats] = useState(null);
   const [convos, setConvos] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadMeta, setUploadMeta] = useState({ title: "", caption: "", keywords: "", description: "" });
 
   useEffect(() => {
     const ac = config.behavior?.ambassador_chat || {};
     setChat({
-      prompt: ac.prompt || DEFAULT_PROMPT,
+      prompt: ac.prompt || "",
+      prompt_blocks: ac.prompt_blocks?.length ? ac.prompt_blocks : [],
       welcome: ac.welcome || "Salut ! Je suis l'assistant du programme ambassadeur VSM. Tu veux en savoir plus ou candidater ?",
-      sidebar_intro: ac.sidebar_intro || "",
       apply_url: ac.apply_url || config.behavior?.ambassador_url || "https://ambassadeur.vsmcollection.com/apply",
     });
   }, [config]);
 
   const loadAssets = useCallback(async () => {
-    try { setAssets(await api.listAmbassadorAssets()); } catch {}
+    try { setAssets(await api.listAmbassadorAssets()); } catch (e) { toast.error(e.message); }
   }, []);
 
   const loadStats = useCallback(async () => {
@@ -80,12 +80,17 @@ export default function ChatbotAdmin({ config, updateConfig }) {
     if (!file) return;
     setUploading(true);
     try {
-      const title = file.name.replace(/\.[^.]+$/, "");
-      await api.uploadAmbassadorAsset(file, { title, caption: "" });
+      await api.uploadAmbassadorAsset(file, {
+        title: uploadMeta.title || file.name.replace(/\.[^.]+$/, ""),
+        caption: uploadMeta.caption,
+        keywords: uploadMeta.keywords,
+        description: uploadMeta.description,
+      });
       toast.success("Image ajoutée");
+      setUploadMeta({ title: "", caption: "", keywords: "", description: "" });
       loadAssets();
     } catch (err) {
-      toast.error(err.message || "Upload échoué — vérifie le bucket Supabase ambassador-media");
+      toast.error(err.message || "Upload échoué");
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -98,9 +103,46 @@ export default function ChatbotAdmin({ config, updateConfig }) {
     loadAssets();
   };
 
+  const moveAsset = async (idx, dir) => {
+    const next = [...assets];
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[idx], next[j]] = [next[j], next[idx]];
+    setAssets(next);
+    try {
+      await api.reorderAmbassadorAssets(next.map((a) => a.id));
+    } catch (e) {
+      toast.error(e.message);
+      loadAssets();
+    }
+  };
+
+  const updateAssetField = async (id, patch) => {
+    try {
+      await api.updateAmbassadorAsset(id, patch);
+      loadAssets();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
   const toggleStar = async (id, starred) => {
     await api.updateConversation(id, { starred: !starred });
     loadConvos();
+  };
+
+  const addPromptBlock = () => {
+    setChat({ ...chat, prompt_blocks: [...(chat.prompt_blocks || []), newPromptBlock()] });
+  };
+
+  const updatePromptBlock = (idx, patch) => {
+    const blocks = [...(chat.prompt_blocks || [])];
+    blocks[idx] = { ...blocks[idx], ...patch };
+    setChat({ ...chat, prompt_blocks: blocks });
+  };
+
+  const removePromptBlock = (idx) => {
+    setChat({ ...chat, prompt_blocks: (chat.prompt_blocks || []).filter((_, i) => i !== idx) });
   };
 
   return (
@@ -131,49 +173,101 @@ export default function ChatbotAdmin({ config, updateConfig }) {
       </div>
 
       {tab === "config" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <Card title="Prompt ambassadeur" action={<RedButton onClick={saveConfig}><Save size={12} className="mr-1" /> Sauver</RedButton>}>
-            <Textarea rows={12} value={chat.prompt || ""} onChange={(e) => setChat({ ...chat, prompt: e.target.value })} className="font-mono text-xs" />
-            <p className="text-[10px] text-[var(--vsm-grey)] mt-2">Variable : {"{APPLY_URL}"}</p>
+        <div className="space-y-4">
+          <Card
+            title="Blocs de prompt ambassadeur"
+            subtitle="Découpe tes instructions en cases titrées — l'IA les lit mieux qu'un seul long texte"
+            action={(
+              <div className="flex gap-2">
+                <OutlineButton onClick={addPromptBlock}><Plus size={12} className="mr-1" /> Bloc</OutlineButton>
+                <RedButton onClick={saveConfig}><Save size={12} className="mr-1" /> Sauver</RedButton>
+              </div>
+            )}
+          >
+            <Field label="Introduction courte (optionnel)">
+              <Textarea rows={3} value={chat.prompt || ""} onChange={(e) => setChat({ ...chat, prompt: e.target.value })} className="font-mono text-xs" placeholder={DEFAULT_PROMPT} />
+            </Field>
+
+            {(chat.prompt_blocks || []).map((block, idx) => (
+              <div key={block.id || idx} className="mt-4 border border-[var(--vsm-border)] p-3 space-y-2">
+                <div className="flex gap-2 items-center">
+                  <Input
+                    value={block.title || ""}
+                    onChange={(e) => updatePromptBlock(idx, { title: e.target.value })}
+                    placeholder="Titre du bloc (ex: Kit ambassadeur)"
+                    className="flex-1"
+                  />
+                  <button type="button" onClick={() => removePromptBlock(idx)} className="text-[var(--vsm-grey)] hover:text-[var(--vsm-red)]">
+                    <X size={14} />
+                  </button>
+                </div>
+                <Textarea
+                  rows={5}
+                  value={block.content || ""}
+                  onChange={(e) => updatePromptBlock(idx, { content: e.target.value })}
+                  className="font-mono text-xs"
+                  placeholder="Instructions précises pour ce sujet…"
+                />
+              </div>
+            ))}
+
+            {!chat.prompt_blocks?.length && (
+              <p className="text-xs text-[var(--vsm-grey)] mt-3">Ajoute des blocs : Candidature, Kit, Commissions, Avantages…</p>
+            )}
           </Card>
-          <div className="space-y-4">
-            <Card title="Accueil & sidebar" action={<RedButton onClick={saveConfig}>Sauver</RedButton>}>
-              <Field label="Message de bienvenue (chat)">
-                <Textarea rows={3} value={chat.welcome || ""} onChange={(e) => setChat({ ...chat, welcome: e.target.value })} />
-              </Field>
-              <Field label="Texte sidebar (aperçu programme)" className="mt-3">
-                <Textarea rows={3} value={chat.sidebar_intro || ""} onChange={(e) => setChat({ ...chat, sidebar_intro: e.target.value })} />
-              </Field>
-              <Field label="Lien candidature" className="mt-3">
-                <Input value={chat.apply_url || ""} onChange={(e) => setChat({ ...chat, apply_url: e.target.value })} />
-              </Field>
-            </Card>
-          </div>
+
+          <Card title="Accueil & lien candidature" action={<RedButton onClick={saveConfig}>Sauver</RedButton>}>
+            <Field label="Message de bienvenue (chat)">
+              <Textarea rows={3} value={chat.welcome || ""} onChange={(e) => setChat({ ...chat, welcome: e.target.value })} />
+            </Field>
+            <Field label="Lien candidature" className="mt-3">
+              <Input value={chat.apply_url || ""} onChange={(e) => setChat({ ...chat, apply_url: e.target.value })} />
+            </Field>
+            <p className="text-[10px] text-[var(--vsm-grey)] mt-2">Variable globale : {"{APPLY_URL}"}</p>
+          </Card>
         </div>
       )}
 
       {tab === "media" && (
-        <Card title="Captures & aperçus programme" subtitle="Affichés dans la sidebar du chatbot public"
+        <Card
+          title="Médias programme (base IA)"
+          subtitle="Non affichés dans le chat public — envoyés seulement si le visiteur demande ou si l'IA juge pertinent"
           action={(
             <label className="inline-flex cursor-pointer items-center border border-[var(--vsm-border-strong)] px-3 py-1.5 text-xs uppercase tracking-wider text-[var(--vsm-cream)] hover:border-[var(--vsm-red)]">
               <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={uploading} />
               <Upload size={12} className="mr-1 inline" /> {uploading ? "…" : "Ajouter"}
             </label>
-          )}>
-          <p className="text-xs text-[var(--vsm-grey)] mb-4">
-            Bucket Supabase : <code className="text-[var(--vsm-red)]">ambassador-media</code> (public). Le bot peut aussi les envoyer dans le chat.
-          </p>
+          )}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 p-3 border border-[var(--vsm-border)] bg-[var(--vsm-void)]">
+            <Field label="Titre (pour l'IA)"><Input value={uploadMeta.title} onChange={(e) => setUploadMeta({ ...uploadMeta, title: e.target.value })} placeholder="ex: Dashboard commissions" /></Field>
+            <Field label="Légende courte"><Input value={uploadMeta.caption} onChange={(e) => setUploadMeta({ ...uploadMeta, caption: e.target.value })} /></Field>
+            <Field label="Mots-clés (virgules)"><Input value={uploadMeta.keywords} onChange={(e) => setUploadMeta({ ...uploadMeta, keywords: e.target.value })} placeholder="commission, suivi, dashboard" /></Field>
+            <Field label="Quand envoyer ?"><Input value={uploadMeta.description} onChange={(e) => setUploadMeta({ ...uploadMeta, description: e.target.value })} placeholder="Si le client demande comment suivre ses commissions" /></Field>
+          </div>
+
           {assets.length === 0 ? (
-            <p className="text-sm text-[var(--vsm-grey)]">Aucune image — ajoute des captures du programme.</p>
+            <p className="text-sm text-[var(--vsm-grey)]">Aucune image — l'IA n'enverra rien tant qu'il n'y a pas de médias.</p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {assets.map((a) => (
-                <div key={a.id} className="border border-[var(--vsm-border)] group relative">
-                  <img src={a.image_url} alt={a.title} className="w-full aspect-square object-cover" />
-                  <div className="p-2 text-xs truncate">{a.title}</div>
-                  <button type="button" onClick={() => deleteAsset(a.id)} className="absolute top-2 right-2 p-1 bg-black/70 text-white opacity-0 group-hover:opacity-100">
-                    <Trash2 size={12} />
-                  </button>
+            <div className="space-y-4">
+              {assets.map((a, idx) => (
+                <div key={a.id} className="flex flex-col sm:flex-row gap-3 border border-[var(--vsm-border)] p-3">
+                  <img src={a.image_url} alt={a.title} className="w-full sm:w-28 h-28 object-cover shrink-0" />
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <Input defaultValue={a.title || ""} onBlur={(e) => updateAssetField(a.id, { title: e.target.value })} placeholder="Titre" />
+                    <Input defaultValue={a.caption || ""} onBlur={(e) => updateAssetField(a.id, { caption: e.target.value })} placeholder="Légende" />
+                    <Input
+                      defaultValue={(a.keywords || []).join(", ")}
+                      onBlur={(e) => updateAssetField(a.id, { keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+                      placeholder="Mots-clés (virgules)"
+                    />
+                    <Input defaultValue={a.description || ""} onBlur={(e) => updateAssetField(a.id, { description: e.target.value })} placeholder="Quand l'IA doit envoyer cette image" />
+                  </div>
+                  <div className="flex sm:flex-col gap-1 shrink-0">
+                    <OutlineButton onClick={() => moveAsset(idx, -1)} disabled={idx === 0}><ChevronUp size={12} /></OutlineButton>
+                    <OutlineButton onClick={() => moveAsset(idx, 1)} disabled={idx === assets.length - 1}><ChevronDown size={12} /></OutlineButton>
+                    <OutlineButton onClick={() => deleteAsset(a.id)}><Trash2 size={12} /></OutlineButton>
+                  </div>
                 </div>
               ))}
             </div>

@@ -188,7 +188,32 @@ alter table public.ambassador_assets enable row level security;
 drop policy if exists "anon all ambassador_assets" on public.ambassador_assets;
 create policy "anon all ambassador_assets" on public.ambassador_assets for all using (true) with check (true);
 
--- Bucket Storage à créer dans Supabase Dashboard : ambassador-media (public)
+-- ----------------------------------------------------------------------------
+-- MIGRATION v4 — assets ambassadeur enrichis + storage policies
+-- ----------------------------------------------------------------------------
+alter table public.ambassador_assets add column if not exists description text;
+alter table public.ambassador_assets add column if not exists keywords text[] not null default array[]::text[];
+
+-- Bucket Storage ambassador-media
+insert into storage.buckets (id, name, public)
+values ('ambassador-media', 'ambassador-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Public read ambassador-media" on storage.objects;
+create policy "Public read ambassador-media" on storage.objects
+  for select using (bucket_id = 'ambassador-media');
+
+drop policy if exists "Anon insert ambassador-media" on storage.objects;
+create policy "Anon insert ambassador-media" on storage.objects
+  for insert with check (bucket_id = 'ambassador-media');
+
+drop policy if exists "Anon update ambassador-media" on storage.objects;
+create policy "Anon update ambassador-media" on storage.objects
+  for update using (bucket_id = 'ambassador-media');
+
+drop policy if exists "Anon delete ambassador-media" on storage.objects;
+create policy "Anon delete ambassador-media" on storage.objects
+  for delete using (bucket_id = 'ambassador-media');
 
 -- ============================================================================
 -- DONE
