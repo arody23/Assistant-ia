@@ -1,17 +1,13 @@
 /**
  * Données checkout e-commerce (Supabase partagé avec le site)
- * — historique client, communes / frais de livraison
  */
 
 import { getSupabase } from "./supabase.js";
+import { log } from "./logger.js";
+import { phoneTail, toE164 } from "./phone-utils.js";
 
 function norm(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim();
-}
-
-function phoneTail(phone) {
-  const d = String(phone || "").replace(/\D/g, "");
-  return d.length >= 9 ? d.slice(-9) : d;
 }
 
 export async function getDeliveryZones() {
@@ -22,7 +18,10 @@ export async function getDeliveryZones() {
     .select("id, name, city, price, zone_type")
     .eq("is_active", true)
     .order("name");
-  if (error) return [];
+  if (error) {
+    await log("error", `delivery_zones: ${error.message}`);
+    return [];
+  }
   return data || [];
 }
 
@@ -45,79 +44,75 @@ export function formatDeliveryZonesBlock(zones = []) {
   if (!zones.length) return "";
   const lines = zones.map((z) => {
     const price = Number(z.price || 0).toLocaleString("fr-FR");
-    return `• ${z.name} (${z.city || "Kinshasa"}): ${price} FC livraison [${z.zone_type || "—"}]`;
+    return `• ${z.name} (${z.city || "Kinshasa"}): ${price} FC livraison`;
   });
   return [
     "--- FRAIS LIVRAISON PAR COMMUNE (source checkout site)",
-    "Utilise UNIQUEMENT ces tarifs. Identifie la commune dans l'adresse du client.",
+    "Utilise UNIQUEMENT ces tarifs selon la commune indiquée par le client.",
     ...lines,
   ].join("\n");
 }
 
-/** Version compacte pour le prompt commande (commune détectée ou top 10). */
 export function formatDeliveryZonesCompact(zones = [], addressHint = "") {
   if (!zones.length) return "";
   const matched = matchDeliveryZone(addressHint, zones);
   const subset = matched ? [matched] : zones.slice(0, 10);
-  const lines = subset.map((z) => {
-    const price = Number(z.price || 0).toLocaleString("fr-FR");
-    return `• ${z.name}: ${price} FC`;
-  });
+  const lines = subset.map((z) => `• ${z.name}: ${Number(z.price || 0).toLocaleString("fr-FR")} FC`);
   const extra = !matched && zones.length > 10
     ? [`… +${zones.length - 10} autres communes — demande la commune au client`]
     : [];
   return [
     "--- FRAIS LIVRAISON (communes)",
-    "Utilise UNIQUEMENT ces tarifs selon la commune indiquée par le client.",
+    "Utilise UNIQUEMENT ces tarifs.",
     ...lines,
     ...extra,
   ].join("\n");
 }
 
-/**
- * Récupère nom / téléphone / adresse depuis commandes passées ou profil site.
- */
 export async function getCustomerCheckoutContext(phone) {
   const db = getSupabase();
   if (!db) return { name: "", phone: "", address: "", lastDeliveryDate: "" };
 
-  const tail = phoneTail(phone);
-  const waPhone = tail ? `+${String(phone).replace(/\D/g, "")}` : "";
+  const e164 = toE164(phone);
+  const tail = phoneTail(e164 || phone);
+  const customerPhone = e164 || (tail ? `+242${tail}` : "");
 
   let name = "";
-  let customerPhone = waPhone;
+  let outPhone = customerPhone;
   let address = "";
   let lastDeliveryDate = "";
 
   if (tail) {
-    const { data: orders } = await db
+    const { data: orders, error: orderErr } = await db
       .from("orders")
       .select("customer_name, customer_phone, delivery_address, delivery_date")
       .ilike("customer_phone", `%${tail}%`)
       .order("created_at", { ascending: false })
       .limit(1);
 
-    if (orders?.[0]) {
+    if (orderErr) await log("error", `checkout orders: ${orderErr.message}`);
+    else if (orders?.[0]) {
       name = orders[0].customer_name || "";
-      customerPhone = orders[0].customer_phone || customerPhone;
+      outPhone = orders[0].customer_phone || outPhone;
       address = orders[0].delivery_address || "";
       lastDeliveryDate = orders[0].delivery_date || "";
     }
 
-    const { data: profiles } = await db
+    const { data: profiles, error: profErr } = await db
       .from("profiles")
       .select("full_name, name, phone")
       .ilike("phone", `%${tail}%`)
       .limit(1);
 
-    const prof = profiles?.[0];
-    if (prof) {
+    if (profErr) await log("error", `checkout profiles: ${profErr.message}`);
+    else if (profiles?.[0]) {
+      const prof = profiles[0];
       if (!name) name = prof.full_name || prof.name || "";
-      if (!customerPhone) customerPhone = prof.phone || customerPhone;
+      if (!outPhone) outPhone = prof.phone || outPhone;
     }
   }
 
-  return { name, phone: customerPhone, address, lastDeliveryDate };
+  return { name, phone: outPhone, address, lastDeliveryDate };
 }
 
 export function formatCheckoutCustomerBlock(ctx = {}) {

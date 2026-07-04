@@ -23,6 +23,7 @@ export default function ChatbotAdmin({ config, updateConfig }) {
   const [tab, setTab] = useState("config");
   const [chat, setChat] = useState({});
   const [assets, setAssets] = useState([]);
+  const [assetEdits, setAssetEdits] = useState({});
   const [stats, setStats] = useState(null);
   const [convos, setConvos] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -39,7 +40,20 @@ export default function ChatbotAdmin({ config, updateConfig }) {
   }, [config]);
 
   const loadAssets = useCallback(async () => {
-    try { setAssets(await api.listAmbassadorAssets()); } catch (e) { toast.error(e.message); }
+    try {
+      const list = await api.listAmbassadorAssets();
+      setAssets(list);
+      const edits = {};
+      for (const a of list) {
+        edits[a.id] = {
+          title: a.title || "",
+          caption: a.caption || "",
+          keywords: (a.keywords || []).join(", "),
+          description: a.description || "",
+        };
+      }
+      setAssetEdits(edits);
+    } catch (e) { toast.error(e.message); }
   }, []);
 
   const loadStats = useCallback(async () => {
@@ -114,6 +128,23 @@ export default function ChatbotAdmin({ config, updateConfig }) {
     } catch (e) {
       toast.error(e.message);
       loadAssets();
+    }
+  };
+
+  const saveAsset = async (id) => {
+    const e = assetEdits[id];
+    if (!e) return;
+    try {
+      await api.updateAmbassadorAsset(id, {
+        title: e.title,
+        caption: e.caption,
+        keywords: e.keywords.split(",").map((s) => s.trim()).filter(Boolean),
+        description: e.description,
+      });
+      toast.success("Média sauvegardé");
+      loadAssets();
+    } catch (err) {
+      toast.error(err.message);
     }
   };
 
@@ -254,14 +285,27 @@ export default function ChatbotAdmin({ config, updateConfig }) {
                 <div key={a.id} className="flex flex-col sm:flex-row gap-3 border border-[var(--vsm-border)] p-3">
                   <img src={a.image_url} alt={a.title} className="w-full sm:w-28 h-28 object-cover shrink-0" />
                   <div className="flex-1 space-y-2 min-w-0">
-                    <Input defaultValue={a.title || ""} onBlur={(e) => updateAssetField(a.id, { title: e.target.value })} placeholder="Titre" />
-                    <Input defaultValue={a.caption || ""} onBlur={(e) => updateAssetField(a.id, { caption: e.target.value })} placeholder="Légende" />
                     <Input
-                      defaultValue={(a.keywords || []).join(", ")}
-                      onBlur={(e) => updateAssetField(a.id, { keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+                      value={assetEdits[a.id]?.title ?? ""}
+                      onChange={(ev) => setAssetEdits({ ...assetEdits, [a.id]: { ...assetEdits[a.id], title: ev.target.value } })}
+                      placeholder="Titre"
+                    />
+                    <Input
+                      value={assetEdits[a.id]?.caption ?? ""}
+                      onChange={(ev) => setAssetEdits({ ...assetEdits, [a.id]: { ...assetEdits[a.id], caption: ev.target.value } })}
+                      placeholder="Légende"
+                    />
+                    <Input
+                      value={assetEdits[a.id]?.keywords ?? ""}
+                      onChange={(ev) => setAssetEdits({ ...assetEdits, [a.id]: { ...assetEdits[a.id], keywords: ev.target.value } })}
                       placeholder="Mots-clés (virgules)"
                     />
-                    <Input defaultValue={a.description || ""} onBlur={(e) => updateAssetField(a.id, { description: e.target.value })} placeholder="Quand l'IA doit envoyer cette image" />
+                    <Input
+                      value={assetEdits[a.id]?.description ?? ""}
+                      onChange={(ev) => setAssetEdits({ ...assetEdits, [a.id]: { ...assetEdits[a.id], description: ev.target.value } })}
+                      placeholder="Quand l'IA doit envoyer cette image"
+                    />
+                    <RedButton onClick={() => saveAsset(a.id)}><Save size={12} className="mr-1" /> Sauver</RedButton>
                   </div>
                   <div className="flex sm:flex-col gap-1 shrink-0">
                     <OutlineButton onClick={() => moveAsset(idx, -1)} disabled={idx === 0}><ChevronUp size={12} /></OutlineButton>

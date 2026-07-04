@@ -33,7 +33,16 @@ function db() {
 }
 
 export async function getConfig() {
-  const { data } = await db().from("bot_config").select("*").eq("id", "main").maybeSingle();
+  const { data, error } = await db().from("bot_config").select("*").eq("id", "main").maybeSingle();
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error(`[ERROR] getConfig: ${error.message}`);
+    return {};
+  }
+  if (!data) {
+    // eslint-disable-next-line no-console
+    console.warn("[WARN] getConfig: aucune ligne bot_config (id=main)");
+  }
   return data || {};
 }
 

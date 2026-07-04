@@ -70,6 +70,13 @@ export function wasProcessed(state, msgId) {
   return !!(msgId && state.processedIds.includes(msgId));
 }
 
+/** Vide les IDs traités au redémarrage (nouveau snapshot backlog). */
+export function clearProcessedIds(sessionDir, state) {
+  const next = { ...state, processedIds: [] };
+  saveWaState(sessionDir, next);
+  return next;
+}
+
 /** Timestamp WA en secondes (gère ms si besoin). */
 export function normalizeMsgTimestamp(ts) {
   const n = Number(ts) || 0;

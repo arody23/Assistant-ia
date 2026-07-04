@@ -90,18 +90,7 @@ Réponds UNIQUEMENT en JSON valide:
     parsed.product_guess ? `Produit identifié: ${parsed.product_guess}` : null,
   ].filter(Boolean).join("\n");
 
-  const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim();
-  const activeNames = productNames.map((n) => norm(n));
-  const guessNorm = norm(parsed.product_guess || "");
-  const guessIsActive = guessNorm && activeNames.some((n) => n.includes(guessNorm) || guessNorm.includes(n));
-
   const archived = detectArchivedCollection(searchTerms, cfg);
-  const termsNorm = norm(searchTerms);
-  const termsMentionActive = activeNames.some((n) => {
-    const first = n.split(/\s+/)[0];
-    return first.length > 3 && termsNorm.includes(first);
-  });
-
   const lines = [
     "ANALYSE IMAGE:",
     `- VSM: ${parsed.is_vsm_product} (${parsed.confidence})`,
@@ -112,10 +101,10 @@ Réponds UNIQUEMENT en JSON valide:
 
   if (parsed.is_vsm_product === "no") {
     lines.push(`→ ${substitutePlaceholders(getPrompts(cfg).not_in_catalog, { COLLECTIONS: names })}`);
-  } else if (archived && !guessIsActive && !termsMentionActive) {
+  } else if (archived) {
     lines.push(`→ ${buildArchivedHint(cfg, archived, collectionsSummary || names)}`);
   } else {
-    lines.push("→ Croise avec le catalogue pour prix, stock et lien produit. Ne mentionne pas d'autres collections.");
+    lines.push("→ Croise avec le catalogue pour prix, stock et lien produit.");
   }
 
   return {

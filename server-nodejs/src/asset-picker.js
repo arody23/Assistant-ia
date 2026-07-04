@@ -1,5 +1,5 @@
 /**
- * Sélection intelligente des médias ambassadeur — pas d'envoi massif automatique.
+ * Sélection des médias ambassadeur — respecte « Quand envoyer ? » et sort_order.
  */
 
 function norm(s) {
@@ -11,54 +11,53 @@ export function userWantsVisual(text) {
   return /aperçu|apercu|photo|image|voir|ressemble|montre|capture|visuel|exemple|screenshot|écran|ecran/.test(q);
 }
 
+/** Instructions admin : envoi seulement si le client demande explicitement. */
+function requiresExplicitRequest(description) {
+  const d = norm(description);
+  if (!d) return true;
+  return /uniquement si|seulement si|si le client demande|si le visiteur demande|when (the )?client ask|only if|pas d'?envoi spontan|ne pas envoyer sans/.test(d);
+}
+
+function scoreAsset(asset, message, reply) {
+  const q = norm(`${message} ${reply}`);
+  let score = 0;
+  const title = norm(asset.title);
+  const caption = norm(asset.caption || "");
+  const keywords = (asset.keywords || []).map(norm);
+
+  if (title && q.includes(title)) score += 15;
+  for (const w of title.split(/[\s\-_/]+/).filter((x) => x.length > 3)) {
+    if (q.includes(w)) score += 4;
+  }
+  if (caption && q.includes(caption)) score += 8;
+  for (const kw of keywords) {
+    if (kw && q.includes(kw)) score += 6;
+  }
+  return score;
+}
+
 export function selectAmbassadorAssets(message, reply, assets = []) {
   if (!assets.length) return [];
 
-  const q = norm(`${message} ${reply}`);
   const explicit = userWantsVisual(message);
+  const ordered = [...assets].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-  const scored = assets
-    .map((asset) => {
-      let score = 0;
-      const title = norm(asset.title);
-      const caption = norm(asset.caption || "");
-      const desc = norm(asset.description || "");
-      const keywords = (asset.keywords || []).map(norm);
+  const candidates = ordered
+    .map((asset) => ({ asset, score: scoreAsset(asset, message, reply) }))
+    .filter(({ asset, score }) => {
+      if (score <= 0) return false;
+      if (explicit) return true;
+      if (requiresExplicitRequest(asset.description)) return false;
+      return score >= 8;
+    });
 
-      if (title && q.includes(title)) score += 15;
-      for (const w of title.split(/[\s\-_/]+/).filter((x) => x.length > 3)) {
-        if (q.includes(w)) score += 4;
-      }
-      if (caption && q.includes(caption)) score += 8;
-      for (const w of caption.split(/\s+/).filter((x) => x.length > 4)) {
-        if (q.includes(w)) score += 2;
-      }
-      if (desc) {
-        for (const w of desc.split(/\s+/).filter((x) => x.length > 4)) {
-          if (q.includes(w)) score += 2;
-        }
-      }
-      for (const kw of keywords) {
-        if (kw && q.includes(kw)) score += 6;
-      }
-
-      return { asset, score };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  if (!scored.length) return [];
+  if (!candidates.length) return [];
 
   if (explicit) {
-    return scored.slice(0, 2).map((x) => x.asset);
+    return candidates.slice(0, 2).map((x) => x.asset);
   }
 
-  // Pertinence forte uniquement (IA a cité le bon visuel dans sa réponse)
-  if (scored[0].score >= 10) {
-    return [scored[0].asset];
-  }
-
-  return [];
+  return [candidates[0].asset];
 }
 
 export function assetsToImages(assets) {

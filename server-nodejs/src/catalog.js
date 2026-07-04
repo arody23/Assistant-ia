@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabase.js";
+import { log } from "./logger.js";
 
 const SITE = (process.env.SITE_URL || "https://www.vsmcollection.com").replace(/\/$/, "");
 
@@ -30,10 +31,9 @@ function scoreProduct(product, query, extraKeywords = []) {
   const cat = norm(product.category);
   let score = 0;
 
+  // Slug — priorité maximale (ex: renescentia)
   if (slug) {
     if (q.includes(slug)) score += 30;
-    const slugSpaced = slug.replace(/-/g, " ");
-    if (slugSpaced && q.includes(slugSpaced)) score += 28;
     for (const part of slug.split(/[-_\s]+/).filter((w) => w.length > 2)) {
       if (q.includes(part)) score += 10;
     }
@@ -59,30 +59,7 @@ function scoreProduct(product, query, extraKeywords = []) {
     if (k && q.includes(k)) score += 5;
     if (slug && k && slug.includes(k)) score += 8;
   }
-
-  // Pénalité si la requête cible clairement une autre collection
-  if (slug.includes("classic") && q.includes("renescentia") && !q.includes("classic")) score -= 25;
-  if (slug.includes("renescentia") && q.includes("classic") && !q.includes("renescentia")) score -= 25;
-
   return score;
-}
-
-function findProductByGuess(products, guess) {
-  if (!guess?.trim()) return null;
-  const g = norm(guess);
-  const gSlug = g.replace(/\s+/g, "-");
-
-  return products.find((p) => {
-    const slug = norm(p.slug || "");
-    const name = norm(p.name);
-    return slug === gSlug
-      || slug === g
-      || name === g
-      || name.includes(g)
-      || g.includes(name)
-      || slug.replace(/-/g, " ").includes(g)
-      || g.includes(slug.replace(/-/g, " "));
-  }) || null;
 }
 
 function parseSize(query) {
@@ -135,37 +112,14 @@ function buildContext(entries, query) {
       product.description ? `  Description: ${product.description.trim().slice(0, 280)}` : null,
       `  Variantes${askedSize || askedColor ? " (filtrées)" : ""}:`,
       summarizeVariants(allVariants, askedSize, askedColor),
-      "  RÈGLE: cite UNIQUEMENT ces variantes pour stock/tailles. N'invente jamais une taille absente.",
     ].filter(Boolean).join("\n");
   });
   return lines.join("\n\n");
 }
 
-async function loadVariantsByProduct(productIds) {
-  const supabase = getSupabase();
-  if (!supabase || !productIds.length) return {};
-  const { data: variants } = await supabase
-    .from("product_variants")
-    .select("*")
-    .in("product_id", productIds);
-  const byProduct = {};
-  for (const v of variants || []) {
-    (byProduct[v.product_id] ||= []).push(v);
-  }
-  return byProduct;
-}
-
-async function catalogFromProduct(product, query, cfg, matchScore = 100) {
-  const byProduct = await loadVariantsByProduct([product.id]);
-  const entry = { product, variants: byProduct[product.id] || [], score: matchScore };
-  return {
-    products: [product],
-    context: buildContext([entry], query),
-    primary: product,
-    matchScore,
-  };
-}
-
+/**
+ * Recherche produits + variantes dans la BDD e-commerce existante.
+ */
 export async function getActiveProducts() {
   const supabase = getSupabase();
   if (!supabase) return [];
@@ -186,12 +140,33 @@ export function buildAvailableSummary(products) {
 
 export async function searchCatalog(query, cfg = {}) {
   const supabase = getSupabase();
-  if (!supabase) return { products: [], context: "", primary: null, matchScore: 0 };
+  if (!supabase) return { products: [], context: "", primary: null };
 
-  const products = await getActiveProducts();
-  if (!products.length) return { products: [], context: "", primary: null, matchScore: 0 };
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("is_active", true);
 
-  const byProduct = await loadVariantsByProduct(products.map((p) => p.id));
+  if (error) {
+    await log("error", `catalog products: ${error.message}`);
+    return { products: [], context: "", primary: null, matchScore: 0 };
+  }
+  if (!products?.length) {
+    await log("warn", "catalog: aucun produit actif");
+    return { products: [], context: "", primary: null, matchScore: 0 };
+  }
+
+  const ids = products.map((p) => p.id);
+  const { data: variants } = await supabase
+    .from("product_variants")
+    .select("*")
+    .in("product_id", ids);
+
+  const byProduct = {};
+  for (const v of variants || []) {
+    (byProduct[v.product_id] ||= []).push(v);
+  }
+
   const keywords = cfg.product_keywords || [];
   const scored = products
     .map((p) => ({ product: p, variants: byProduct[p.id] || [], score: scoreProduct(p, query, keywords) }))
@@ -213,7 +188,7 @@ export async function searchCatalog(query, cfg = {}) {
       .sort((a, b) => b.score - a.score)
       .slice(0, 1);
   } else {
-    return { products: [], context: "", primary: null, matchScore: 0 };
+    return { products: [], context: "", primary: null };
   }
 
   const context = buildContext(entries, query);
@@ -226,36 +201,4 @@ export async function searchCatalog(query, cfg = {}) {
     primary,
     matchScore,
   };
-}
-
-/**
- * Résolution catalogue — priorité vision (product_guess) puis texte client.
- */
-export async function resolveCatalog({ userText = "", visionGuess = "", visionSearchTerms = "", cfg = {} }) {
-  const products = await getActiveProducts();
-  const query = visionSearchTerms || userText;
-
-  const fromVision = findProductByGuess(products, visionGuess);
-  if (fromVision) {
-    return catalogFromProduct(fromVision, query, cfg, 100);
-  }
-
-  const catalog = await searchCatalog(query, cfg);
-
-  if (visionGuess && catalog.primary) {
-    const forced = findProductByGuess(products, visionGuess);
-    if (forced && forced.id !== catalog.primary.id) {
-      return catalogFromProduct(forced, query, cfg, 95);
-    }
-  }
-
-  const fromText = findProductByGuess(products, userText);
-  if (fromText && catalog.primary && fromText.id !== catalog.primary.id) {
-    const textScore = scoreProduct(fromText, userText, cfg.product_keywords);
-    if (textScore >= (catalog.matchScore || 0)) {
-      return catalogFromProduct(fromText, query, cfg, textScore);
-    }
-  }
-
-  return catalog;
 }

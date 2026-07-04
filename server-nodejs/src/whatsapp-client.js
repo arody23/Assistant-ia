@@ -19,19 +19,20 @@ import os from "os";
 
 import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory, getConversationByPhone, updateConversationProfile, getWhatsappMedia } from "./supabase.js";
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
-import { resolveCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
+import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { buildClientContextBlock } from "./prompt-builder.js";
-import { isOrderFlowActive, buildOrderFlowBlock, processOrderBotReply, stripOrderBotMarkers } from "./order-bot.js";
-import { shouldSendProductImage, shouldSendAfterPhoto, markProductImageSent, resetProductImagesIfChanged } from "./product-images.js";
+import { isOrderFlowActive, detectCancelOrder, buildOrderFlowBlock, processOrderBotReply, stripOrderBotMarkers } from "./order-bot.js";
+import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
-import { debugLog } from "./debug-log.js";
+import { resolveWaIdentity } from "./phone-utils.js";
 import {
   loadWaState,
   markReady,
   markProcessed,
   wasProcessed,
   normalizeMsgTimestamp,
+  clearProcessedIds,
 } from "./wa-session-state.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
@@ -86,11 +87,11 @@ function shouldIgnoreBacklog(msg) {
   const ageSec = nowSec - msgTs;
 
   const ignoreBefore = waState.ignoreBeforeSec || 0;
-  if (ignoreBefore && msgTs > 0 && msgTs < ignoreBefore - 3) {
+  if (ignoreBefore && msgTs > 0 && msgTs < ignoreBefore) {
     return { ignore: true, reason: "antérieur au démarrage", msgId };
   }
 
-  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 5) {
+  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 2) {
     return { ignore: true, reason: "backlog (warmup)", msgId };
   }
 
@@ -106,7 +107,7 @@ async function snapshotAndMarkBacklog(waClient) {
     const chats = await waClient.getChats();
     const perChat = parseInt(process.env.WA_BACKLOG_SNAPSHOT_PER_CHAT || "50", 10);
     let count = 0;
-    for (const chat of chats.slice(0, 150)) {
+    for (const chat of chats) {
       try {
         const msgs = await chat.fetchMessages({ limit: perChat });
         for (const m of msgs) {
@@ -120,12 +121,14 @@ async function snapshotAndMarkBacklog(waClient) {
       } catch {}
     }
     if (count) await log("info", `Backlog snapshot: ${count} message(s) marqués sans réponse`);
-    // #region agent log
-    debugLog("whatsapp-client.js:snapshotAndMarkBacklog", "backlog snapshot done", { count, chats: chats.length }, "A");
-    // #endregion
   } catch (e) {
     await log("warn", `Snapshot backlog: ${e.message}`);
   }
+}
+
+function dismissMessage(msg) {
+  const id = getMsgId(msg);
+  if (id) waState = markProcessed(sessionDir, waState, id);
 }
 
 function bindClientEvents(waClient) {
@@ -156,6 +159,7 @@ function bindClientEvents(waClient) {
   waClient.on("ready", async () => {
     isReady = false;
     waState = markReady(sessionDir, waState, { warmupMs });
+    waState = clearProcessedIds(sessionDir, waState);
     await snapshotAndMarkBacklog(waClient);
     isReady = true;
     const me = waClient.info?.wid?.user || "";
@@ -293,18 +297,14 @@ export async function startWhatsApp() {
 
 async function handleMessage(msg) {
   try {
-    if (!isReady) return;
+    if (!isReady) {
+      dismissMessage(msg);
+      return;
+    }
     if (msg.fromMe) return;
     if (msg.isStatus) return;
 
     const backlog = shouldIgnoreBacklog(msg);
-    // #region agent log
-    debugLog("whatsapp-client.js:handleMessage", "backlog decision", {
-      ignore: backlog.ignore,
-      reason: backlog.reason,
-      from: (msg.from || "").slice(0, 12),
-    }, "A");
-    // #endregion
     if (backlog.ignore) {
       if (backlog.msgId) waState = markProcessed(sessionDir, waState, backlog.msgId);
       await log("info", `Message ignoré (${backlog.reason}) de ${msg.from}`);
@@ -312,14 +312,21 @@ async function handleMessage(msg) {
     }
 
     const cfg = await getConfig();
-    if (!cfg.bot_active) return;
+    if (!cfg.bot_active) {
+      dismissMessage(msg);
+      return;
+    }
 
     const behavior = cfg.behavior || {};
     const chat = await msg.getChat();
-    if (chat.isGroup && behavior.ignore_groups !== false) return;
+    if (chat.isGroup && behavior.ignore_groups !== false) {
+      dismissMessage(msg);
+      return;
+    }
 
     if (!canReply() && behavior.anti_spam !== false) {
       await log("warn", `Rate limit atteint, message de ${msg.from} ignoré`);
+      dismissMessage(msg);
       return;
     }
 
@@ -327,7 +334,6 @@ async function handleMessage(msg) {
     let mediaType = "text";
     let visionContext = "";
     let visionSearchTerms = "";
-    let visionProductGuess = "";
 
     if (msg.type === "chat" || msg.type === "text") {
       userText = msg.body || "";
@@ -370,23 +376,27 @@ async function handleMessage(msg) {
         userText = vision.userMessage;
         visionContext = vision.visionContext;
         visionSearchTerms = vision.searchTerms;
-        visionProductGuess = vision.parsed.product_guess || "";
-        await log("info", `Image analysée · VSM=${vision.parsed.is_vsm_product} · ${visionProductGuess || "?"}`);
+        await log("info", `Image analysée · VSM=${vision.parsed.is_vsm_product} · ${vision.parsed.product_guess || "?"}`);
       }
     } else {
       userText = "[Le client a envoyé un média non supporté pour le moment]";
     }
 
-    if (!userText.trim()) return;
+    if (!userText.trim()) {
+      dismissMessage(msg);
+      return;
+    }
 
     const contact = await msg.getContact();
-    const phone = (msg.from || "").replace("@c.us", "");
+    const { phone, e164 } = resolveWaIdentity(contact, msg.from);
+    const checkoutPhone = e164 || phone;
     const displayName = contact.pushname || contact.name || contact.shortName || phone;
 
     try { await chat.sendStateTyping(); } catch {}
     await sleep(replyDelayMs(cfg));
 
-    const existingConv = await getConversationByPhone(phone);
+    const existingConv = await getConversationByPhone(phone)
+      || (e164 && e164 !== phone ? await getConversationByPhone(e164) : null);
 
     let history = [];
     if (existingConv?.id && behavior.remember_history !== false) {
@@ -394,6 +404,21 @@ async function handleMessage(msg) {
     }
 
     const profile = existingConv?.profile || {};
+
+    if (detectCancelOrder(userText) && profile?.order_draft?.status && profile.order_draft.status !== "done") {
+      const convId = existingConv?.id;
+      if (convId) {
+        await updateConversationProfile(convId, {
+          profile: {
+            ...profile,
+            order_draft: { status: "done", cancelled_at: new Date().toISOString() },
+          },
+        });
+      }
+      await msg.reply("D'accord, j'annule la commande en cours. Dis-moi si tu veux autre chose.");
+      dismissMessage(msg);
+      return;
+    }
     const clientContext = buildClientContextBlock({
       name: displayName,
       status: profile.status,
@@ -404,34 +429,13 @@ async function handleMessage(msg) {
       notes: existingConv?.notes,
     });
 
-    let catalog = await resolveCatalog({
-      userText,
-      visionGuess: visionProductGuess,
-      visionSearchTerms,
-      cfg,
-    });
+    let catalog = await searchCatalog(visionSearchTerms || userText, cfg);
     if (mediaType === "image" && !catalog.context) {
-      catalog = await resolveCatalog({
-        userText: "collections produits disponibles vsm",
-        visionGuess: visionProductGuess,
-        cfg,
-      });
+      catalog = await searchCatalog("collections produits disponibles vsm", cfg);
     }
 
-    // #region agent log
-    debugLog("whatsapp-client.js:handleMessage", "catalog resolved", {
-      visionGuess: visionProductGuess,
-      primary: catalog.primary?.name,
-      primaryId: catalog.primary?.id,
-      matchScore: catalog.matchScore,
-      mediaType,
-    }, "B");
-    // #endregion
-
-    const profileWithProduct = resetProductImagesIfChanged(profile, catalog.primary);
-
-    const orderActive = isOrderFlowActive(cfg, profileWithProduct, userText);
-    const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profileWithProduct, catalog, phone) : "";
+    const orderActive = isOrderFlowActive(cfg, profile, userText);
+    const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, checkoutPhone) : "";
 
     let { reply, model } = await generateReply({
       message: userText,
@@ -442,22 +446,18 @@ async function handleMessage(msg) {
       clientContext,
       extra: orderBlock,
     });
-    if (!reply) return;
+    if (!reply) {
+      dismissMessage(msg);
+      return;
+    }
 
     let orderProfilePatch = null;
     if (orderActive) {
-      const processed = await processOrderBotReply({ reply, profile: profileWithProduct, phone, catalog, cfg });
+      const processed = await processOrderBotReply({ reply, profile, phone: checkoutPhone, catalog, cfg });
       reply = processed.reply;
       if (processed.profilePatch) {
-        orderProfilePatch = { ...profileWithProduct, ...processed.profilePatch };
+        orderProfilePatch = { ...profile, ...processed.profilePatch };
       }
-      // #region agent log
-      debugLog("whatsapp-client.js:handleMessage", "order draft update", {
-        action: processed.profilePatch?.order_draft?.status,
-        productId: processed.profilePatch?.order_draft?.items?.[0]?.product_id,
-        unitPrice: processed.profilePatch?.order_draft?.items?.[0]?.unit_price,
-      }, "D");
-      // #endregion
     } else {
       reply = stripOrderBotMarkers(reply);
     }
@@ -468,28 +468,19 @@ async function handleMessage(msg) {
 
     if (backlog.msgId) waState = markProcessed(sessionDir, waState, backlog.msgId);
 
-    const wantProductImage = behavior.send_product_images !== false
-      && catalog.primary?.image_url
-      && (
-        shouldSendProductImage({ userText, catalog, profile: profileWithProduct })
-        || shouldSendAfterPhoto({ mediaType, catalog, profile: profileWithProduct })
-      );
-
     let profilePatch = null;
-    if (wantProductImage) {
+    if (
+      behavior.send_product_images !== false
+      && shouldSendProductImage({ userText, catalog, profile })
+      && mediaType !== "image"
+    ) {
       try {
         const url = productUrl(catalog.primary);
         const media = await MessageMedia.fromUrl(catalog.primary.image_url, { unsafeMime: true });
         await client.sendMessage(msg.from, media, {
           caption: `${catalog.primary.name.trim()} — ${url}`,
         });
-        profilePatch = markProductImageSent(profileWithProduct, catalog.primary);
-        // #region agent log
-        debugLog("whatsapp-client.js:handleMessage", "product image sent", {
-          product: catalog.primary.name,
-          mediaType,
-        }, "C");
-        // #endregion
+        profilePatch = markProductImageSent(profile, catalog.primary);
       } catch (e) {
         await log("warn", `Envoi image produit échoué: ${e.message}`);
       }
@@ -509,9 +500,10 @@ async function handleMessage(msg) {
     const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
     const convId = existingConv?.id || conversationId;
     let finalProfile = null;
-    if (orderProfilePatch) finalProfile = { ...profileWithProduct, ...orderProfilePatch };
-    if (profilePatch) finalProfile = { ...(finalProfile || profileWithProduct), ...profilePatch };
+    if (orderProfilePatch) finalProfile = { ...profile, ...orderProfilePatch };
+    if (profilePatch) finalProfile = { ...(finalProfile || profile), ...profilePatch };
     if (finalProfile && convId) {
+      if (e164) finalProfile = { ...finalProfile, wa_e164: e164 };
       await updateConversationProfile(convId, { profile: finalProfile });
     }
     if (conversationId) {

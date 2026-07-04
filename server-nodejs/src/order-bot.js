@@ -14,7 +14,9 @@ import {
 } from "./checkout-context.js";
 
 const ORDER_INTENT =
-  /\b(commander|passer commande|je veux commander|prendre une commande|une commande|confirme ma commande|valide ma commande|je n['']arrive pas.*commander|impossible de commander|je prends (le|la|un|une))\b/i;
+  /\b(commander|passer commande|je veux commander|prendre une commande|confirme ma commande|valide ma commande|je n['']arrive pas.*commander|impossible de commander|annule.*commande|annuler la commande)\b/i;
+
+const CANCEL_INTENT = /\b(annule|annuler|stop|laisse tomber|oublie la commande)\b/i;
 
 const MARKER_PATTERNS = [
   /<!--\s*ORDER_BOT:\s*(\{[\s\S]*?\})\s*-->/i,
@@ -22,12 +24,13 @@ const MARKER_PATTERNS = [
   /\bORDER_BOT:\s*(\{[\s\S]*?\})\s*\)?/i,
 ];
 
-export function detectOrderIntent(text) {
-  return ORDER_INTENT.test(text || "");
+export function detectCancelOrder(text) {
+  return CANCEL_INTENT.test(text || "");
 }
 
 export function isOrderFlowActive(cfg, profile, userText) {
   if (cfg?.behavior?.order_via_whatsapp === false) return false;
+  if (CANCEL_INTENT.test(userText || "")) return false;
   const draft = profile?.order_draft;
   if (draft?.status && draft.status !== "done") return true;
   return detectOrderIntent(userText);
@@ -158,7 +161,7 @@ export async function buildOrderFlowBlock(cfg, profile, catalog, phone) {
     '<!--ORDER_BOT:{"action":"update_draft","fields":{...}}-->',
     "ou <!--ORDER_BOT:{\"action\":\"create_order\",\"fields\":{...}}--> après confirmation client.",
     "OBLIGATOIRE: fermer par --> . Champs fields: customer_name, customer_phone, delivery_address, delivery_date, urgent, items[], delivery_zone_name.",
-    catalog?.primary ? `Produit catalogue actif: ${catalog.primary.name} (id ${catalog.primary.id}) — ${catalog.primary.price} FC` : null,
+    catalog?.primary ? `Produit catalogue probable: ${catalog.primary.name} — ${catalog.primary.price} FC` : null,
   ].filter(Boolean).join("\n");
 }
 
@@ -166,11 +169,12 @@ function normName(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim();
 }
 
-function pickProduct(catalog, fields, draft) {
+async function pickProduct(catalog, fields, draft) {
+  const supabase = getSupabase();
   const products = catalog?.products || [];
-  if (fields.product_id) {
-    const p = products.find((x) => x.id === fields.product_id);
-    if (p) return p;
+  if (fields.product_id && supabase) {
+    const { data } = await supabase.from("products").select("*").eq("id", fields.product_id).maybeSingle();
+    if (data) return data;
   }
   const name = fields.product_name || draft.items?.[0]?.product_name;
   if (name) {
@@ -181,32 +185,37 @@ function pickProduct(catalog, fields, draft) {
     });
     if (p) return p;
   }
-  if (draft.items?.[0]?.product_id) {
-    const p = products.find((x) => x.id === draft.items[0].product_id);
-    if (p) return p;
+  if (draft.items?.[0]?.product_id && supabase) {
+    const { data } = await supabase.from("products").select("*").eq("id", draft.items[0].product_id).maybeSingle();
+    if (data) return data;
   }
-  if (catalog?.primary && (catalog.matchScore || 0) >= 15) return catalog.primary;
+  if (catalog?.primary && (catalog.matchScore || 0) >= 12) return catalog.primary;
   return null;
 }
 
-function mergeDraft(existing, fields = {}, catalog, zones = []) {
+async function mergeDraft(existing, fields = {}, catalog, zones = []) {
   const f = normalizeOrderFields(fields);
   const draft = { ...(existing || emptyOrderDraft()), ...f, items: [...(existing?.items || [])] };
-  const product = pickProduct(catalog, f, draft);
+  const product = await pickProduct(catalog, f, draft);
 
   if (f.items?.length) {
-    draft.items = f.items.map((it) => {
+    draft.items = await Promise.all(f.items.map(async (it) => {
       const item = { quantity: 1, ...it };
-      const p = product
-        || (it.product_id && catalog?.products?.find((x) => x.id === it.product_id))
-        || catalog?.primary;
+      let p = product;
+      if (!p && item.product_id) {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase.from("products").select("*").eq("id", item.product_id).maybeSingle();
+          p = data;
+        }
+      }
       if (!item.unit_price && p) {
         item.unit_price = Number(p.price) || 0;
         item.product_id = p.id;
         if (!item.product_name) item.product_name = p.name;
       }
       return item;
-    });
+    }));
   } else if (f.product_name || f.size || f.color) {
     const base = draft.items[0] || { quantity: 1 };
     const p = product || catalog?.primary;
@@ -218,13 +227,6 @@ function mergeDraft(existing, fields = {}, catalog, zones = []) {
       product_id: f.product_id || base.product_id || p?.id || null,
       unit_price: f.unit_price || base.unit_price || Number(p?.price) || 0,
       quantity: f.quantity || base.quantity || 1,
-    }];
-  } else if (product && !draft.items.length) {
-    draft.items = [{
-      quantity: 1,
-      product_id: product.id,
-      product_name: product.name,
-      unit_price: Number(product.price) || 0,
     }];
   }
 
@@ -281,12 +283,12 @@ export async function processOrderBotReply({ reply, profile, phone, catalog, cfg
   }
 
   if (payload.action === "update_draft" && payload.fields) {
-    draft = mergeDraft(draft, payload.fields, catalog, zones);
+    draft = await mergeDraft(draft, payload.fields, catalog, zones);
     return { reply: safeReply, profilePatch: { order_draft: draft }, orderCreated: null };
   }
 
   if (payload.action === "create_order") {
-    draft = mergeDraft(draft, payload.fields || {}, catalog, zones);
+    draft = await mergeDraft(draft, payload.fields || {}, catalog, zones);
     draft = await resolveUnitPrices(draft);
     const missing = missingFields(draft);
     if (missing.length) {
