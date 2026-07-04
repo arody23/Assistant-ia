@@ -17,6 +17,14 @@ export const DEFAULT_AUTOMATIONS = [
     actions: [{ type: "whatsapp_notify_admin", priority: true }],
   },
   {
+    id: "urgent_order_updated",
+    name: "Commande marquée urgente → alerte admin",
+    trigger: "order_updated",
+    enabled: true,
+    conditions: [{ field: "urgent", op: "eq", value: true }],
+    actions: [{ type: "whatsapp_notify_admin", priority: true }],
+  },
+  {
     id: "delivered_notify",
     name: "Statut livré → notification admin (sync site)",
     trigger: "order_updated",
@@ -28,7 +36,7 @@ export const DEFAULT_AUTOMATIONS = [
     id: "courier_assigned",
     name: "Livreur assigné → notification livreur",
     trigger: "order_updated",
-    enabled: true,
+    enabled: false,
     conditions: [{ field: "courier_id", op: "changed" }],
     actions: [{ type: "whatsapp_notify_courier" }],
   },

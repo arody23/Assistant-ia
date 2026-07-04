@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Card, Toggle, Select, Field, RedButton, OutlineButton, Input } from "@/components/Primitives";
+import { Card, Toggle, Select, Field, RedButton, OutlineButton, Input, Textarea } from "@/components/Primitives";
 import { Plus, X } from "lucide-react";
 
 const TOGGLES = [
@@ -78,6 +78,20 @@ export default function Comportement({ config, updateConfig }) {
             </div>
           ))}
         </div>
+      </Card>
+
+      <Card title="Commandes WhatsApp" subtitle="Instructions pour la prise de commande via l'IA"
+        action={<RedButton onClick={save}>Sauver</RedButton>}>
+        <p className="text-xs text-[var(--vsm-grey)] mb-3">
+          L'IA reçoit automatiquement le catalogue, les communes/frais de livraison et l'historique client (checkout).
+          Ajoute ici tes règles métier (délais, paiement, confirmation…).
+        </p>
+        <Textarea
+          value={behavior.order_instructions || ""}
+          onChange={(e) => setKey("order_instructions", e.target.value)}
+          placeholder="Ex: Toujours demander la commune. Paiement à la livraison en FC. Confirmer le total avant validation."
+          rows={5}
+        />
       </Card>
 
       <Card title="Capacités métier (personnalisées)" subtitle="Ajoute tes propres règles — ex: programme ambassadeur, kit boutique"

@@ -21,7 +21,7 @@ import { getConfig, upsertSession, upsertConversation, insertMessages, recentHis
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
 import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { buildClientContextBlock } from "./prompt-builder.js";
-import { isOrderFlowActive, buildOrderFlowBlock, processOrderBotReply } from "./order-bot.js";
+import { isOrderFlowActive, buildOrderFlowBlock, processOrderBotReply, stripOrderBotMarkers } from "./order-bot.js";
 import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
@@ -89,7 +89,7 @@ function shouldIgnoreBacklog(msg) {
     return { ignore: true, reason: "antérieur au démarrage", msgId };
   }
 
-  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 10) {
+  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 5) {
     return { ignore: true, reason: "backlog (warmup)", msgId };
   }
 
@@ -98,6 +98,29 @@ function shouldIgnoreBacklog(msg) {
   }
 
   return { ignore: false, msgId };
+}
+
+async function flushUnreadBacklog(waClient) {
+  try {
+    const chats = await waClient.getChats();
+    let count = 0;
+    for (const chat of chats) {
+      const unread = chat.unreadCount || 0;
+      if (!unread) continue;
+      const msgs = await chat.fetchMessages({ limit: Math.min(unread + 10, 60) });
+      for (const m of msgs) {
+        const id = getMsgId(m);
+        if (id) {
+          waState = markProcessed(sessionDir, waState, id);
+          count++;
+        }
+      }
+      try { await chat.sendSeen(); } catch {}
+    }
+    if (count) await log("info", `Backlog: ${count} message(s) déjà vus — ignorés sans réponse`);
+  } catch (e) {
+    await log("warn", `Flush backlog: ${e.message}`);
+  }
 }
 
 function bindClientEvents(waClient) {
@@ -126,10 +149,12 @@ function bindClientEvents(waClient) {
   });
 
   waClient.on("ready", async () => {
-    isReady = true;
+    isReady = false;
     waState = markReady(sessionDir, waState, { warmupMs });
+    await flushUnreadBacklog(waClient);
+    isReady = true;
     const me = waClient.info?.wid?.user || "";
-    await log("success", `Bot WhatsApp prêt · +${me} · anti-backlog actif ${warmupMs / 1000}s`);
+    await log("success", `Bot WhatsApp prêt · +${me} · anti-backlog ${warmupMs / 1000}s`);
     await upsertSession({
       status: "ready", connected: true,
       phone_number: `+${me}`, qr_code: null,
@@ -148,7 +173,6 @@ function bindClientEvents(waClient) {
     scheduleSoftRestart(8000);
   });
 
-  // Messages uniquement après connexion — évite le traitement pendant l'init
   waClient.on("message", handleMessage);
 }
 
@@ -372,7 +396,7 @@ async function handleMessage(msg) {
     }
 
     const orderActive = isOrderFlowActive(cfg, profile, userText);
-    const orderBlock = orderActive ? buildOrderFlowBlock(cfg, profile, catalog, phone) : "";
+    const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, phone) : "";
 
     let { reply, model } = await generateReply({
       message: userText,
@@ -392,6 +416,8 @@ async function handleMessage(msg) {
       if (processed.profilePatch) {
         orderProfilePatch = { ...profile, ...processed.profilePatch };
       }
+    } else {
+      reply = stripOrderBotMarkers(reply);
     }
 
     try { await chat.clearState(); } catch {}

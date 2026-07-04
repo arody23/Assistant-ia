@@ -24,6 +24,7 @@ export async function createOrderRecord(body, cfg = null) {
     delivery_date,
     notes,
     urgent,
+    delivery_fee = 0,
     items = [],
     status = "pending",
     order_source = "whatsapp_bot",
@@ -35,10 +36,12 @@ export async function createOrderRecord(body, cfg = null) {
   }
   if (!items.length) throw new Error("Au moins un article requis");
 
-  const total = items.reduce(
+  const itemsTotal = items.reduce(
     (s, it) => s + Number(it.unit_price || 0) * Number(it.quantity || 1),
     0
   );
+  const fee = Number(delivery_fee) || 0;
+  const total = itemsTotal + fee;
 
   const orderNotes = [notes, urgent ? "⚡ LIVRAISON URGENTE" : null].filter(Boolean).join("\n");
 
@@ -53,6 +56,7 @@ export async function createOrderRecord(body, cfg = null) {
       status,
       order_source,
       total_amount: total,
+      delivery_fee: fee,
       courier_id: courier_id || null,
     })
     .select()
