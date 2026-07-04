@@ -10,11 +10,11 @@ import {
   getDeliveryZones,
   matchDeliveryZone,
   formatCheckoutCustomerBlock,
-  formatDeliveryZonesBlock,
+  formatDeliveryZonesCompact,
 } from "./checkout-context.js";
 
 const ORDER_INTENT =
-  /\b(commander|commande|je veux|j['']aimerais|acheter|passer commande|livraison|livrer|je n['']arrive pas|impossible de commander|prendre une|une commande|je prends|valide|confirme|commune|quartier|frais de livraison|taille\s*[xsml]|pointure)\b/i;
+  /\b(commander|passer commande|je veux commander|prendre une commande|une commande|confirme ma commande|valide ma commande|je n['']arrive pas.*commander|impossible de commander|je prends (le|la|un|une))\b/i;
 
 const MARKER_PATTERNS = [
   /<!--\s*ORDER_BOT:\s*(\{[\s\S]*?\})\s*-->/i,
@@ -151,41 +151,80 @@ export async function buildOrderFlowBlock(cfg, profile, catalog, phone) {
     "Utilise les prix catalogue + frais livraison commune ci-dessous. Ne invente rien.",
     customInstructions ? `Instructions admin:\n${customInstructions}` : null,
     formatCheckoutCustomerBlock(checkout),
-    formatDeliveryZonesBlock(zones),
+    formatDeliveryZonesCompact(zones, draft.delivery_address),
     draftSummary(draft),
     "",
     "SYSTÈME (invisible client) — termine ta réponse par UNE ligne exacte:",
     '<!--ORDER_BOT:{"action":"update_draft","fields":{...}}-->',
     "ou <!--ORDER_BOT:{\"action\":\"create_order\",\"fields\":{...}}--> après confirmation client.",
     "OBLIGATOIRE: fermer par --> . Champs fields: customer_name, customer_phone, delivery_address, delivery_date, urgent, items[], delivery_zone_name.",
-    catalog?.primary ? `Produit catalogue probable: ${catalog.primary.name} — ${catalog.primary.price} FC` : null,
+    catalog?.primary ? `Produit catalogue actif: ${catalog.primary.name} (id ${catalog.primary.id}) — ${catalog.primary.price} FC` : null,
   ].filter(Boolean).join("\n");
+}
+
+function normName(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim();
+}
+
+function pickProduct(catalog, fields, draft) {
+  const products = catalog?.products || [];
+  if (fields.product_id) {
+    const p = products.find((x) => x.id === fields.product_id);
+    if (p) return p;
+  }
+  const name = fields.product_name || draft.items?.[0]?.product_name;
+  if (name) {
+    const n = normName(name);
+    const p = products.find((x) => {
+      const pn = normName(x.name);
+      return pn.includes(n) || n.includes(pn);
+    });
+    if (p) return p;
+  }
+  if (draft.items?.[0]?.product_id) {
+    const p = products.find((x) => x.id === draft.items[0].product_id);
+    if (p) return p;
+  }
+  if (catalog?.primary && (catalog.matchScore || 0) >= 15) return catalog.primary;
+  return null;
 }
 
 function mergeDraft(existing, fields = {}, catalog, zones = []) {
   const f = normalizeOrderFields(fields);
   const draft = { ...(existing || emptyOrderDraft()), ...f, items: [...(existing?.items || [])] };
+  const product = pickProduct(catalog, f, draft);
 
   if (f.items?.length) {
     draft.items = f.items.map((it) => {
       const item = { quantity: 1, ...it };
-      if (!item.unit_price && catalog?.primary) {
-        item.unit_price = Number(catalog.primary.price) || 0;
-        item.product_id = catalog.primary.id;
-        if (!item.product_name) item.product_name = catalog.primary.name;
+      const p = product
+        || (it.product_id && catalog?.products?.find((x) => x.id === it.product_id))
+        || catalog?.primary;
+      if (!item.unit_price && p) {
+        item.unit_price = Number(p.price) || 0;
+        item.product_id = p.id;
+        if (!item.product_name) item.product_name = p.name;
       }
       return item;
     });
   } else if (f.product_name || f.size || f.color) {
     const base = draft.items[0] || { quantity: 1 };
+    const p = product || catalog?.primary;
     draft.items = [{
       ...base,
-      product_name: f.product_name || base.product_name,
+      product_name: f.product_name || base.product_name || p?.name,
       size: f.size || base.size,
       color: f.color || base.color,
-      product_id: f.product_id || base.product_id || catalog?.primary?.id || null,
-      unit_price: f.unit_price || base.unit_price || Number(catalog?.primary?.price) || 0,
+      product_id: f.product_id || base.product_id || p?.id || null,
+      unit_price: f.unit_price || base.unit_price || Number(p?.price) || 0,
       quantity: f.quantity || base.quantity || 1,
+    }];
+  } else if (product && !draft.items.length) {
+    draft.items = [{
+      quantity: 1,
+      product_id: product.id,
+      product_name: product.name,
+      unit_price: Number(product.price) || 0,
     }];
   }
 

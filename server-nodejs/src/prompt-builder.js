@@ -200,7 +200,13 @@ export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext
   if (visionContext) parts.push(`--- ANALYSE IMAGE\n${visionContext}`);
   if (catalogContext) {
     parts.push(`--- CATALOGUE VSM (source de vérité produits)\n${catalogContext}`);
-    parts.push("RÈGLE CATALOGUE: utilise uniquement ces données pour prix/stock/liens. Ne jamais inventer une disponibilité.");
+    parts.push([
+      "RÈGLES CATALOGUE:",
+      "- Une seule collection par réponse (sauf comparaison explicitement demandée).",
+      "- Stock et tailles: cite UNIQUEMENT les lignes Variantes ci-dessus. N'invente jamais une taille absente.",
+      "- Le système envoie automatiquement la photo produit si pertinent — ne dis jamais que tu n'as pas le droit d'envoyer des images.",
+      "Utilise uniquement ces données pour prix, stock et liens.",
+    ].join("\n"));
   }
   if (extra) parts.push(extra);
 

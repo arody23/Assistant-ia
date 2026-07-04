@@ -54,6 +54,26 @@ export function formatDeliveryZonesBlock(zones = []) {
   ].join("\n");
 }
 
+/** Version compacte pour le prompt commande (commune détectée ou top 10). */
+export function formatDeliveryZonesCompact(zones = [], addressHint = "") {
+  if (!zones.length) return "";
+  const matched = matchDeliveryZone(addressHint, zones);
+  const subset = matched ? [matched] : zones.slice(0, 10);
+  const lines = subset.map((z) => {
+    const price = Number(z.price || 0).toLocaleString("fr-FR");
+    return `• ${z.name}: ${price} FC`;
+  });
+  const extra = !matched && zones.length > 10
+    ? [`… +${zones.length - 10} autres communes — demande la commune au client`]
+    : [];
+  return [
+    "--- FRAIS LIVRAISON (communes)",
+    "Utilise UNIQUEMENT ces tarifs selon la commune indiquée par le client.",
+    ...lines,
+    ...extra,
+  ].join("\n");
+}
+
 /**
  * Récupère nom / téléphone / adresse depuis commandes passées ou profil site.
  */

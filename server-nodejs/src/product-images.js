@@ -29,10 +29,39 @@ export function shouldSendProductImage({ userText, catalog, profile = {} }) {
   return false;
 }
 
+/** Envoie l'image catalogue après qu'une photo client a identifié un produit. */
+export function shouldSendAfterPhoto({ mediaType, catalog, profile = {} }) {
+  if (mediaType !== "image") return false;
+  if (!catalog?.primary?.image_url) return false;
+  if ((catalog.matchScore || 0) < 50) return false;
+
+  const key = productKey(catalog.primary);
+  if (!key) return false;
+
+  const sent = profile.sent_product_images || [];
+  return !sent.includes(key);
+}
+
+/** Réinitialise les images envoyées si le client change de collection. */
+export function resetProductImagesIfChanged(profile = {}, product) {
+  const key = productKey(product);
+  if (!key) return profile;
+  if (profile.pinned_product_key === key) return profile;
+  return {
+    ...profile,
+    pinned_product_key: key,
+    sent_product_images: [],
+  };
+}
+
 export function markProductImageSent(profile = {}, product) {
   const key = productKey(product);
   if (!key) return profile;
   const sent = [...(profile.sent_product_images || [])];
   if (!sent.includes(key)) sent.push(key);
-  return { ...profile, sent_product_images: sent.slice(-20) };
+  return {
+    ...profile,
+    pinned_product_key: key,
+    sent_product_images: sent.slice(-20),
+  };
 }
