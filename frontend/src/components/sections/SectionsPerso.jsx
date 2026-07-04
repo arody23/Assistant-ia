@@ -98,7 +98,7 @@ export default function SectionsPerso({ config, updateConfig }) {
         <div>
           <h2 className="font-display text-lg tracking-wider text-[var(--vsm-white)]">Sections personnalisées</h2>
           <p className="text-xs text-[var(--vsm-grey)] mt-1">
-            Crée tes propres blocs (ambassadeur, kit boutique, programme…) — le bot les lit automatiquement.
+            Base de connaissance WhatsApp + chatbot — le bot lit ces blocs à chaque message (sans supposer au-delà).
           </p>
         </div>
         <div className="flex gap-2">

@@ -92,6 +92,19 @@ export function buildStyleBlock(cfg = {}) {
   ].join(" ");
 }
 
+/** Règles strictes : ne répondre qu'à partir des sources configurées dans le dashboard. */
+export function buildStrictKnowledgeRulesBlock(cfg = {}) {
+  const transfer = getPrompts(cfg).transfer_human || "Je transfère ta demande à notre équipe humaine.";
+  return [
+    "--- RÈGLES ABSOLUES (ANTI-SUPPOSITION)",
+    "1. Sources autorisées UNIQUEMENT : prompt principal, base de connaissance (sections dashboard), capacités métier, catalogue produits, contexte client.",
+    "2. N'invente JAMAIS : prix, stock, tailles, délais, procédures, avantages, commissions, URLs, conditions du programme ambassadeur.",
+    "3. Ne complète PAS avec des suppositions ni ta connaissance générale sur la marque ou le streetwear.",
+    "4. Si une information n'est pas explicitement dans ces sources : dis-le clairement (« Je n'ai pas cette information ») et propose le transfert humain.",
+    `5. Transfert humain (phrase type) : « ${transfer} »`,
+  ].join("\n");
+}
+
 /** Blocs personnalisés créés depuis le dashboard (prompts + champs structurés). */
 export function buildCustomSectionsBlock(cfg = {}) {
   const sections = getBehavior(cfg).custom_sections || [];
@@ -103,21 +116,38 @@ export function buildCustomSectionsBlock(cfg = {}) {
     const masterToggle = fields.find((f) => f.type === "toggle" && f.key === "enabled");
     if (masterToggle && masterToggle.value === false) continue;
 
-    const lines = [`--- ${section.title.toUpperCase()}`];
+    const lines = [`[${section.title}]`];
     for (const field of fields) {
       if (field.type === "toggle" && field.key === "enabled") continue;
       if (field.type === "toggle" && !field.value) continue;
+
       if (field.type === "list") {
         const items = (field.value || []).filter(Boolean);
-        if (items.length) lines.push(`${field.label || field.key}: ${items.join(", ")}`);
-      } else if (field.value != null && String(field.value).trim()) {
-        lines.push(`${field.label || field.key}: ${field.value}`);
+        if (!items.length) continue;
+        if (field.label) lines.push(`${field.label}:`);
+        for (const item of items) lines.push(`  • ${item}`);
+        continue;
+      }
+
+      const text = field.value != null ? String(field.value).trim() : "";
+      if (!text) continue;
+
+      if (field.type === "prompt") {
+        if (field.label && field.label !== "Instructions") lines.push(`${field.label}:`);
+        lines.push(text);
+      } else {
+        lines.push(`${field.label || field.key}: ${text}`);
       }
     }
     if (lines.length > 1) blocks.push(lines.join("\n"));
   }
 
-  return blocks.join("\n\n");
+  if (!blocks.length) return "";
+  return [
+    "--- BASE DE CONNAISSANCE (sections dashboard — source de vérité)",
+    "Lis et applique strictement le contenu ci-dessous. Ne rien ajouter ni supposer au-delà.",
+    ...blocks,
+  ].join("\n\n");
 }
 
 /** Capacités métier ajoutées par l'admin (en plus des toggles techniques). */
@@ -126,7 +156,7 @@ export function buildCustomCapabilitiesBlock(cfg = {}) {
   const active = caps.filter((c) => c.enabled !== false && c.instruction?.trim());
   if (!active.length) return "";
   return [
-    "--- CAPACITÉS MÉTIER",
+    "--- CAPACITÉS MÉTIER (instructions admin)",
     ...active.map((c) => `• ${c.label}: ${c.instruction}`),
   ].join("\n");
 }
@@ -156,20 +186,21 @@ export function isNightMode(cfg = {}) {
 export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext = "", extra = "", clientContext = "" } = {}) {
   const parts = [
     cfg.system_prompt || "",
-    buildLanguageBlock(cfg),
-    buildStyleBlock(cfg),
+    buildStrictKnowledgeRulesBlock(cfg),
     buildCustomSectionsBlock(cfg),
     buildCustomCapabilitiesBlock(cfg),
+    buildLanguageBlock(cfg),
+    buildStyleBlock(cfg),
   ];
 
   if (isNightMode(cfg)) {
     parts.push(getPrompts(cfg).night_mode || DEFAULT_PROMPTS.night_mode);
   }
   if (clientContext) parts.push(clientContext);
-  if (visionContext) parts.push(`--- ${visionContext}`);
+  if (visionContext) parts.push(`--- ANALYSE IMAGE\n${visionContext}`);
   if (catalogContext) {
-    parts.push(`--- CATALOGUE VSM (source de vérité)\n${catalogContext}`);
-    parts.push(`RÈGLES: utilise uniquement ces données pour prix/stock. Ne jamais inventer une disponibilité.`);
+    parts.push(`--- CATALOGUE VSM (source de vérité produits)\n${catalogContext}`);
+    parts.push("RÈGLE CATALOGUE: utilise uniquement ces données pour prix/stock/liens. Ne jamais inventer une disponibilité.");
   }
   if (extra) parts.push(extra);
 
@@ -214,10 +245,11 @@ export function buildAmbassadorSystemPrompt(cfg = {}, { clientContext = "", asse
 
   const parts = [
     base,
-    buildLanguageBlock(cfg),
-    buildStyleBlock(cfg),
+    buildStrictKnowledgeRulesBlock(cfg),
     buildCustomSectionsBlock(cfg),
     buildCustomCapabilitiesBlock(cfg),
+    buildLanguageBlock(cfg),
+    buildStyleBlock(cfg),
   ];
   if (assetsBlock) parts.push(assetsBlock);
   if (clientContext) parts.push(clientContext);
