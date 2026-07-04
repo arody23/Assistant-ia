@@ -48,7 +48,7 @@ export default function Connexion({ session, reloadAll }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 sm:gap-6">
       <Card title="Session WhatsApp" subtitle="whatsapp-web.js · QR live" testid="card-wa-session"
-        action={<OutlineButton onClick={handleReset} disabled={resetting} testid="wa-reset-btn"><RefreshCw size={12} className={`mr-1 ${resetting ? "animate-spin" : ""}`} /> {resetting ? "Reconnexion…" : "Reset"}</OutlineButton>}>
+        action={<OutlineButton onClick={handleReset} disabled={resetting} testid="wa-reset-btn"><RefreshCw size={12} className={`mr-1 ${resetting ? "animate-spin" : ""}`} /> {resetting ? "Reset…" : "Reset session"}</OutlineButton>}>
         <div className="flex flex-col items-center text-center py-4 sm:py-6">
           <div className="w-56 h-56 sm:w-64 sm:h-64 border-2 border-[var(--vsm-red)] flex items-center justify-center bg-white p-3" data-testid="wa-qr-frame">
             {qr ? (
@@ -121,6 +121,11 @@ npm start`}
               <li>Scanne le QR ci-contre</li>
               <li>Le bot prend le relais sur tous les messages entrants</li>
             </ol>
+          </div>
+
+          <div className="bg-[var(--vsm-void)] border border-[var(--vsm-border)] p-3 text-[11px] text-[var(--vsm-cream)] leading-relaxed">
+            <strong className="text-[var(--vsm-white)]">Redéploiement Railway</strong> — la session est conservée automatiquement (volume <span className="font-mono">/data</span>).
+            Utilise <strong>Reset session</strong> uniquement pour forcer un nouveau QR.
           </div>
 
           <div className="bg-[var(--vsm-red-soft)] border border-[var(--vsm-red)] p-3 text-[11px] text-[var(--vsm-cream)] leading-relaxed">

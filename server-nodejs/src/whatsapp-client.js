@@ -5,11 +5,9 @@
  *  - LocalAuth (session persistante → pas de re-scan à chaque démarrage)
  *  - Délai aléatoire avant réponse (1.2 → 2.8 s)
  *  - Indicateur "en train d'écrire" (sendStateTyping)
- *  - Présence "online" toggle naturel
  *  - Rate limit (30 réponses / min par défaut)
- *  - Ignorer les groupes (configurable)
- *  - Ignorer les messages > 30 s (replays/stale)
- *  - Ne jamais répondre à soi-même ni aux statuts
+ *  - Anti-backlog au redémarrage (filigrane + warmup + dédup IDs)
+ *  - Arrêt propre SIGTERM (destroy sans logout → session conservée sur volume)
  */
 
 import pkg from "whatsapp-web.js";
@@ -27,13 +25,21 @@ import { isOrderFlowActive, buildOrderFlowBlock, processOrderBotReply } from "./
 import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
+import {
+  loadWaState,
+  markReady,
+  markProcessed,
+  wasProcessed,
+  normalizeMsgTimestamp,
+} from "./wa-session-state.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
 const minDelay = parseInt(process.env.WA_REPLY_DELAY_MIN_MS || "1200", 10);
 const maxDelay = parseInt(process.env.WA_REPLY_DELAY_MAX_MS || "2800", 10);
 const rateLimit = parseInt(process.env.WA_RATE_LIMIT_PER_MIN || "30", 10);
+const warmupMs = parseInt(process.env.WA_BACKLOG_WARMUP_MS || "120000", 10);
+const maxMsgAgeSec = parseInt(process.env.WA_MAX_MSG_AGE_SEC || "45", 10);
 
-// Sliding window rate limit
 const recentReplies = [];
 function canReply() {
   const now = Date.now();
@@ -55,15 +61,44 @@ let client = null;
 let isReady = false;
 let initializing = false;
 let reconnecting = false;
+let softRestarting = false;
 let startPromise = null;
-/** Timestamp (sec) du dernier ready — ignore les messages antérieurs (backlog au reconnect). */
-let readyAtSec = 0;
+let autoReconnectTimer = null;
+let waState = loadWaState(sessionDir);
 
 const initRetries = parseInt(process.env.WA_INIT_RETRIES || "3", 10);
 const initRetryDelayMs = parseInt(process.env.WA_INIT_RETRY_DELAY_MS || "15000", 10);
 
 export function getClient() { return client; }
 export function isClientReady() { return isReady; }
+
+function getMsgId(msg) {
+  return msg?.id?._serialized || msg?.id || null;
+}
+
+function shouldIgnoreBacklog(msg) {
+  const msgId = getMsgId(msg);
+  if (wasProcessed(waState, msgId)) return { ignore: true, reason: "déjà traité", msgId };
+
+  const msgTs = normalizeMsgTimestamp(msg.timestamp);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const ageSec = nowSec - msgTs;
+
+  const ignoreBefore = waState.ignoreBeforeSec || 0;
+  if (ignoreBefore && msgTs > 0 && msgTs < ignoreBefore - 3) {
+    return { ignore: true, reason: "antérieur au démarrage", msgId };
+  }
+
+  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 10) {
+    return { ignore: true, reason: "backlog (warmup)", msgId };
+  }
+
+  if (ageSec > maxMsgAgeSec) {
+    return { ignore: true, reason: `trop ancien (${ageSec}s)`, msgId };
+  }
+
+  return { ignore: false, msgId };
+}
 
 function bindClientEvents(waClient) {
   waClient.on("qr", async (qr) => {
@@ -92,9 +127,9 @@ function bindClientEvents(waClient) {
 
   waClient.on("ready", async () => {
     isReady = true;
-    readyAtSec = Math.floor(Date.now() / 1000);
+    waState = markReady(sessionDir, waState, { warmupMs });
     const me = waClient.info?.wid?.user || "";
-    await log("success", `Bot WhatsApp prêt · numéro +${me}`);
+    await log("success", `Bot WhatsApp prêt · +${me} · anti-backlog actif ${warmupMs / 1000}s`);
     await upsertSession({
       status: "ready", connected: true,
       phone_number: `+${me}`, qr_code: null,
@@ -109,10 +144,11 @@ function bindClientEvents(waClient) {
       status: "disconnected", connected: false, qr_code: null,
       phone_number: null, connected_at: null,
     });
-    if (reconnecting || initializing) return;
-    setTimeout(() => startWhatsApp().catch(e => log("error", `Reconnect échec: ${e.message}`)), 5000);
+    if (reconnecting || initializing || softRestarting) return;
+    scheduleSoftRestart(8000);
   });
 
+  // Messages uniquement après connexion — évite le traitement pendant l'init
   waClient.on("message", handleMessage);
 }
 
@@ -120,7 +156,6 @@ function createClient() {
   return new Client({
     authStrategy: new LocalAuth({ dataPath: sessionDir }),
     authTimeoutMs: parseInt(process.env.WA_AUTH_TIMEOUT_MS || "120000", 10),
-    // Cache local (défaut lib) — évite les échecs réseau vers GitHub (ECONNRESET)
     webVersionCache: { type: "local" },
     puppeteer: {
       headless: true,
@@ -145,7 +180,32 @@ async function destroyClient() {
   isReady = false;
 }
 
+function scheduleSoftRestart(delayMs = 5000) {
+  if (autoReconnectTimer || reconnecting) return;
+  autoReconnectTimer = setTimeout(() => {
+    autoReconnectTimer = null;
+    restartWhatsApp().catch((e) => log("error", `Auto-restart WA: ${e.message}`));
+  }, delayMs);
+}
+
+/** Redémarre le client SANS effacer la session (redeploy, déconnexion réseau). */
+export async function restartWhatsApp() {
+  if (reconnecting) return;
+  if (softRestarting) return;
+  softRestarting = true;
+  try {
+    await log("info", "Redémarrage WhatsApp (session conservée sur disque)…");
+    await destroyClient();
+    startPromise = null;
+    await startWhatsApp();
+  } finally {
+    softRestarting = false;
+  }
+}
+
 async function startWhatsAppOnce() {
+  if (client) await destroyClient();
+
   await upsertSession({
     status: "initializing", connected: false, qr_code: null,
     phone_number: null, connected_at: null,
@@ -161,11 +221,14 @@ async function startWhatsAppOnce() {
 
 export async function startWhatsApp() {
   if (startPromise) return startPromise;
+  if (isReady && client) return;
+
   startPromise = (async () => {
     if (initializing) return;
     initializing = true;
 
     try {
+      waState = loadWaState(sessionDir);
       for (let attempt = 1; attempt <= initRetries; attempt++) {
         try {
           if (attempt > 1) {
@@ -201,9 +264,16 @@ export async function startWhatsApp() {
 
 async function handleMessage(msg) {
   try {
-    // Filtres rapides
+    if (!isReady) return;
     if (msg.fromMe) return;
     if (msg.isStatus) return;
+
+    const backlog = shouldIgnoreBacklog(msg);
+    if (backlog.ignore) {
+      if (backlog.msgId) waState = markProcessed(sessionDir, waState, backlog.msgId);
+      await log("info", `Message ignoré (${backlog.reason}) de ${msg.from}`);
+      return;
+    }
 
     const cfg = await getConfig();
     if (!cfg.bot_active) return;
@@ -212,23 +282,11 @@ async function handleMessage(msg) {
     const chat = await msg.getChat();
     if (chat.isGroup && behavior.ignore_groups !== false) return;
 
-    // Ignorer le backlog WhatsApp au redémarrage (messages reçus pendant que le bot était OFF)
-    const msgTs = msg.timestamp || 0;
-    if (readyAtSec && msgTs < readyAtSec - 15) {
-      await log("info", `Message ignoré (antérieur au démarrage) de ${msg.from}`);
-      return;
-    }
-
-    // Stale message guard
-    const ageSec = (Date.now() / 1000) - msgTs;
-    if (ageSec > 30) return;
-
     if (!canReply() && behavior.anti_spam !== false) {
       await log("warn", `Rate limit atteint, message de ${msg.from} ignoré`);
       return;
     }
 
-    // Extraire le texte (texte, audio transcrit, ou image analysée)
     let userText = "";
     let mediaType = "text";
     let visionContext = "";
@@ -283,16 +341,13 @@ async function handleMessage(msg) {
 
     if (!userText.trim()) return;
 
-    // Contact info
     const contact = await msg.getContact();
     const phone = (msg.from || "").replace("@c.us", "");
     const displayName = contact.pushname || contact.name || contact.shortName || phone;
 
-    // Indicateur "en train d'écrire" + délai humain
     try { await chat.sendStateTyping(); } catch {}
     await sleep(replyDelayMs(cfg));
 
-    // Récupérer l'historique
     const existingConv = await getConversationByPhone(phone);
 
     let history = [];
@@ -311,17 +366,14 @@ async function handleMessage(msg) {
       notes: existingConv?.notes,
     });
 
-    // Catalogue e-commerce (products + product_variants)
     let catalog = await searchCatalog(visionSearchTerms || userText, cfg);
     if (mediaType === "image" && !catalog.context) {
       catalog = await searchCatalog("collections produits disponibles vsm", cfg);
     }
 
-    // Flux commande WhatsApp (Phase C)
     const orderActive = isOrderFlowActive(cfg, profile, userText);
     const orderBlock = orderActive ? buildOrderFlowBlock(cfg, profile, catalog, phone) : "";
 
-    // Génération Groq
     let { reply, model } = await generateReply({
       message: userText,
       history,
@@ -342,12 +394,12 @@ async function handleMessage(msg) {
       }
     }
 
-    // Envoi
     try { await chat.clearState(); } catch {}
     await msg.reply(reply);
     markReply();
 
-    // Image produit — uniquement si demande client ou première présentation de la collection
+    if (backlog.msgId) waState = markProcessed(sessionDir, waState, backlog.msgId);
+
     let profilePatch = null;
     if (
       behavior.send_product_images !== false
@@ -366,7 +418,6 @@ async function handleMessage(msg) {
       }
     }
 
-    // Médias dashboard (whatsapp_media) — sélection intelligente
     try {
       const waMedia = await getWhatsappMedia();
       const picked = selectAmbassadorAssets(userText, reply, waMedia);
@@ -378,7 +429,6 @@ async function handleMessage(msg) {
       await log("warn", `Médias WhatsApp: ${e.message}`);
     }
 
-    // Persistance
     const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
     const convId = existingConv?.id || conversationId;
     let finalProfile = null;
@@ -400,11 +450,21 @@ async function handleMessage(msg) {
   }
 }
 
+/** Arrêt propre (deploy Railway) — destroy sans logout, session LocalAuth conservée. */
+export async function gracefulShutdownWhatsApp() {
+  if (autoReconnectTimer) {
+    clearTimeout(autoReconnectTimer);
+    autoReconnectTimer = null;
+  }
+  await log("info", "Arrêt propre WhatsApp (session conservée)…");
+  await destroyClient();
+}
+
 export async function logoutWhatsApp() {
   await reconnectWhatsApp();
 }
 
-/** Force une nouvelle session : purge disque + redémarre WhatsApp (génère un QR). */
+/** Reset manuel dashboard — purge session + nouveau QR. */
 export async function reconnectWhatsApp() {
   if (reconnecting) {
     await log("info", "Reconnexion déjà en cours");
@@ -415,6 +475,10 @@ export async function reconnectWhatsApp() {
   initializing = false;
   isReady = false;
   startPromise = null;
+  if (autoReconnectTimer) {
+    clearTimeout(autoReconnectTimer);
+    autoReconnectTimer = null;
+  }
 
   if (client) {
     try { await client.logout(); } catch {}
@@ -422,6 +486,7 @@ export async function reconnectWhatsApp() {
   }
 
   try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch {}
+  waState = { processedIds: [], ignoreBeforeSec: 0, lastReadyAtSec: 0, warmupUntilMs: 0 };
 
   await upsertSession({
     status: "initializing",
@@ -430,7 +495,7 @@ export async function reconnectWhatsApp() {
     phone_number: null,
     connected_at: null,
   });
-  await log("warn", "Reconnexion WhatsApp — génération d'un nouveau QR");
+  await log("warn", "Reset session WhatsApp — nouveau QR requis");
 
   try {
     await startWhatsApp();

@@ -23,6 +23,8 @@ let isClientReady = () => false;
 let getClient = () => null;
 let startWhatsApp = async () => {};
 let reconnectWhatsApp = async () => {};
+let restartWhatsApp = async () => {};
+let gracefulShutdownWhatsApp = async () => {};
 let log = async (level, message) => { console.log(`[${level}] ${message}`); };
 
 app.get("/api/health", (_req, res) => {
@@ -46,6 +48,21 @@ app.get("/api/status", (_req, res) => {
   });
 });
 
+async function handleSoftRestart(_req, res) {
+  const env = getEnvStatus();
+  if (!env.ok) {
+    return res.status(503).json({ ok: false, error: "Variables manquantes", missing: env.missing });
+  }
+  try {
+    restartWhatsApp().catch(async (e) => {
+      await log("error", `WhatsApp restart: ${e.message}`);
+    });
+    res.json({ ok: true, message: "Redémarrage lancé (session conservée)" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+}
+
 async function handleReconnect(_req, res) {
   const env = getEnvStatus();
   if (!env.ok) {
@@ -63,6 +80,7 @@ async function handleReconnect(_req, res) {
 
 app.post("/api/logout", handleReconnect);
 app.post("/api/reconnect", handleReconnect);
+app.post("/api/restart", handleSoftRestart);
 
 registerWebchatRoutes(app);
 registerAmbassadorAssetRoutes(app);
@@ -87,6 +105,8 @@ app.listen(PORT, "0.0.0.0", async () => {
   const logger = await import("./logger.js");
   startWhatsApp = wa.startWhatsApp;
   reconnectWhatsApp = wa.reconnectWhatsApp;
+  restartWhatsApp = wa.restartWhatsApp;
+  gracefulShutdownWhatsApp = wa.gracefulShutdownWhatsApp;
   isClientReady = wa.isClientReady;
   getClient = wa.getClient;
   log = logger.log;
@@ -98,5 +118,13 @@ app.listen(PORT, "0.0.0.0", async () => {
   });
 });
 
-process.on("SIGINT", async () => { await log("warn", "Shutdown SIGINT"); process.exit(0); });
-process.on("SIGTERM", async () => { await log("warn", "Shutdown SIGTERM"); process.exit(0); });
+async function shutdown(signal) {
+  try {
+    await log("warn", `Shutdown ${signal} — fermeture propre (session WA conservée sur volume)`);
+    await gracefulShutdownWhatsApp();
+  } catch {}
+  process.exit(0);
+}
+
+process.on("SIGINT", () => { shutdown("SIGINT"); });
+process.on("SIGTERM", () => { shutdown("SIGTERM"); });
