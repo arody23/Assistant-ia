@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, MessagesSquare, Sparkles, Smartphone,
-  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe, Bot, Image, ShoppingBag,
+  Settings2, Sliders, Terminal, FlaskConical, X, Layers, Globe, Bot, Image, ShoppingBag, Zap,
 } from "lucide-react";
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
     { key: "overview", label: "Overview", icon: LayoutDashboard },
     { key: "conversations", label: "Conversations", icon: MessagesSquare },
     { key: "orders", label: "Commandes", icon: ShoppingBag },
+    { key: "automations", label: "Automatisations", icon: Zap },
     { key: "playground", label: "Playground", icon: FlaskConical },
   ]},
   { section: "Configuration", items: [

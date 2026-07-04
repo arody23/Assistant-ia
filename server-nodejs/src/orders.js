@@ -1,11 +1,11 @@
 /**
- * Commandes — lecture + création depuis le bot WhatsApp
+ * Commandes — lecture + création depuis le bot WhatsApp + automatisations
  */
 
 import { getEnvStatus } from "./env.js";
-import { getSupabase } from "./supabase.js";
+import { getSupabase, getConfig } from "./supabase.js";
 import { log } from "./logger.js";
-import { getClient, isClientReady } from "./whatsapp-client.js";
+import { runOrderAutomations } from "./automations.js";
 
 function db() {
   const c = getSupabase();
@@ -13,23 +13,73 @@ function db() {
   return c;
 }
 
-function adminPhone() {
-  return (process.env.ADMIN_WHATSAPP_PHONE || "+242067458011").replace(/\s/g, "");
-}
+/**
+ * Crée une commande en base (utilisé par API admin et bot WhatsApp).
+ */
+export async function createOrderRecord(body, cfg = null) {
+  const {
+    customer_name,
+    customer_phone,
+    delivery_address,
+    delivery_date,
+    notes,
+    urgent,
+    items = [],
+    status = "pending",
+    order_source = "whatsapp_bot",
+    courier_id,
+  } = body || {};
 
-async function notifyAdmin(text) {
-  const wa = getClient();
-  if (!isClientReady() || !wa) {
-    await log("warn", `Alerte admin (WA indisponible): ${text}`);
-    return;
+  if (!customer_name?.trim() || !customer_phone?.trim()) {
+    throw new Error("customer_name et customer_phone requis");
   }
-  const digits = adminPhone().replace(/\D/g, "");
-  const jid = `${digits}@c.us`;
-  try {
-    await wa.sendMessage(jid, text);
-  } catch (e) {
-    await log("warn", `Alerte admin échouée: ${e.message}`);
-  }
+  if (!items.length) throw new Error("Au moins un article requis");
+
+  const total = items.reduce(
+    (s, it) => s + Number(it.unit_price || 0) * Number(it.quantity || 1),
+    0
+  );
+
+  const orderNotes = [notes, urgent ? "⚡ LIVRAISON URGENTE" : null].filter(Boolean).join("\n");
+
+  const { data: order, error: orderErr } = await db()
+    .from("orders")
+    .insert({
+      customer_name: customer_name.trim(),
+      customer_phone: customer_phone.trim(),
+      delivery_address: delivery_address?.trim() || "",
+      delivery_date: delivery_date?.trim() || "",
+      notes: orderNotes || null,
+      status,
+      order_source,
+      total_amount: total,
+      courier_id: courier_id || null,
+    })
+    .select()
+    .single();
+  if (orderErr) throw orderErr;
+
+  const rows = items.map((it) => ({
+    order_id: order.id,
+    product_id: it.product_id || null,
+    product_name: it.product_name || "Article",
+    size: it.size || "",
+    color: it.color || "",
+    quantity: it.quantity || 1,
+    unit_price: it.unit_price || 0,
+  }));
+  const { error: itemsErr } = await db().from("order_items").insert(rows);
+  if (itemsErr) throw itemsErr;
+
+  const config = cfg || await getConfig();
+  await runOrderAutomations("order_created", {
+    order,
+    items: rows,
+    urgent: !!urgent,
+    cfg: config,
+  });
+
+  return { order, items: rows };
 }
 
 export function registerOrderRoutes(app) {
@@ -61,92 +111,44 @@ export function registerOrderRoutes(app) {
     }
   });
 
+  app.get("/api/admin/couriers", async (_req, res) => {
+    try {
+      const { data, error } = await db().from("couriers").select("*").order("name");
+      if (error) throw error;
+      res.json(data || []);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/admin/orders", async (req, res) => {
     const env = getEnvStatus();
     if (!env.ok) return res.status(503).json({ error: "Bot non configuré", missing: env.missing });
 
     try {
-      const {
-        customer_name,
-        customer_phone,
-        delivery_address,
-        delivery_date,
-        notes,
-        urgent,
-        items = [],
-        status = "pending",
-      } = req.body || {};
-
-      if (!customer_name?.trim() || !customer_phone?.trim()) {
-        return res.status(400).json({ error: "customer_name et customer_phone requis" });
-      }
-      if (!items.length) {
-        return res.status(400).json({ error: "Au moins un article requis" });
-      }
-
-      const total = items.reduce(
-        (s, it) => s + Number(it.unit_price || 0) * Number(it.quantity || 1),
-        0
-      );
-
-      const orderNotes = [notes, urgent ? "⚡ LIVRAISON URGENTE" : null].filter(Boolean).join("\n");
-
-      const { data: order, error: orderErr } = await db()
-        .from("orders")
-        .insert({
-          customer_name: customer_name.trim(),
-          customer_phone: customer_phone.trim(),
-          delivery_address: delivery_address?.trim() || "",
-          delivery_date: delivery_date?.trim() || "",
-          notes: orderNotes || null,
-          status,
-          order_source: "whatsapp_bot",
-          total_amount: total,
-        })
-        .select()
-        .single();
-      if (orderErr) throw orderErr;
-
-      const rows = items.map((it) => ({
-        order_id: order.id,
-        product_id: it.product_id || null,
-        product_name: it.product_name || "Article",
-        size: it.size || "",
-        color: it.color || "",
-        quantity: it.quantity || 1,
-        unit_price: it.unit_price || 0,
-      }));
-      const { error: itemsErr } = await db().from("order_items").insert(rows);
-      if (itemsErr) throw itemsErr;
-
-      const summary = [
-        "🛒 Nouvelle commande WhatsApp",
-        `Client: ${order.customer_name} (${order.customer_phone})`,
-        `Adresse: ${order.delivery_address || "—"}`,
-        `Livraison: ${order.delivery_date || "—"}`,
-        ...rows.map((r) => `• ${r.product_name} ${r.color} ${r.size} x${r.quantity}`),
-        urgent ? "⚡ URGENT" : null,
-        `Total: ${total} FC`,
-        `ID commande: #${order.id}`,
-      ].filter(Boolean).join("\n");
-
-      await notifyAdmin(summary);
-      await log("success", `Commande #${order.id} créée via bot`);
-
-      res.json({ order, items: rows });
+      const { order, items } = await createOrderRecord(req.body);
+      await log("success", `Commande #${order.id} créée`);
+      res.json({ order, items });
     } catch (e) {
       await log("error", `Création commande: ${e.message}`);
-      res.status(500).json({ error: e.message });
+      res.status(e.message.includes("requis") ? 400 : 500).json({ error: e.message });
     }
   });
 
   app.patch("/api/admin/orders/:id", async (req, res) => {
     try {
-      const { status, notes, courier_id } = req.body || {};
+      const { status, notes, courier_id, urgent } = req.body || {};
+
+      const { data: prev } = await db().from("orders").select("*").eq("id", req.params.id).maybeSingle();
+
       const patch = {};
       if (status) patch.status = status;
       if (notes !== undefined) patch.notes = notes;
       if (courier_id !== undefined) patch.courier_id = courier_id;
+      if (urgent === true && prev) {
+        const base = prev.notes || "";
+        patch.notes = base.includes("URGENT") ? base : [base, "⚡ LIVRAISON URGENTE"].filter(Boolean).join("\n");
+      }
 
       const { data, error } = await db()
         .from("orders")
@@ -156,8 +158,22 @@ export function registerOrderRoutes(app) {
         .single();
       if (error) throw error;
 
+      let items = [];
+      const { data: rows } = await db().from("order_items").select("*").eq("order_id", data.id);
+      items = rows || [];
+
+      const cfg = await getConfig();
+      const isUrgent = !!(urgent || (data.notes || "").includes("URGENT"));
+      await runOrderAutomations("order_updated", {
+        order: data,
+        items,
+        prev,
+        urgent: isUrgent,
+        cfg,
+      });
+
       if (status === "delivered" || status === "livree" || status === "livré") {
-        await log("info", `Commande #${data.id} marquée livrée`);
+        await log("info", `Commande #${data.id} marquée livrée (sync table partagée)`);
       }
 
       res.json(data);

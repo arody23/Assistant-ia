@@ -23,6 +23,7 @@ import { getConfig, upsertSession, upsertConversation, insertMessages, recentHis
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
 import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { buildClientContextBlock } from "./prompt-builder.js";
+import { isOrderFlowActive, buildOrderFlowBlock, processOrderBotReply } from "./order-bot.js";
 import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
@@ -316,16 +317,30 @@ async function handleMessage(msg) {
       catalog = await searchCatalog("collections produits disponibles vsm", cfg);
     }
 
+    // Flux commande WhatsApp (Phase C)
+    const orderActive = isOrderFlowActive(cfg, profile, userText);
+    const orderBlock = orderActive ? buildOrderFlowBlock(cfg, profile, catalog, phone) : "";
+
     // Génération Groq
-    const { reply, model } = await generateReply({
+    let { reply, model } = await generateReply({
       message: userText,
       history,
       cfg,
       catalogContext: catalog.context,
       visionContext,
       clientContext,
+      extra: orderBlock,
     });
     if (!reply) return;
+
+    let orderProfilePatch = null;
+    if (orderActive) {
+      const processed = await processOrderBotReply({ reply, profile, phone, catalog, cfg });
+      reply = processed.reply;
+      if (processed.profilePatch) {
+        orderProfilePatch = { ...profile, ...processed.profilePatch };
+      }
+    }
 
     // Envoi
     try { await chat.clearState(); } catch {}
@@ -365,8 +380,12 @@ async function handleMessage(msg) {
 
     // Persistance
     const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
-    if (profilePatch && existingConv?.id) {
-      await updateConversationProfile(existingConv.id, { profile: profilePatch });
+    const convId = existingConv?.id || conversationId;
+    let finalProfile = null;
+    if (orderProfilePatch) finalProfile = { ...profile, ...orderProfilePatch };
+    if (profilePatch) finalProfile = { ...(finalProfile || profile), ...profilePatch };
+    if (finalProfile && convId) {
+      await updateConversationProfile(convId, { profile: finalProfile });
     }
     if (conversationId) {
       const ts = new Date().toISOString();

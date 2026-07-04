@@ -4,6 +4,7 @@ import { Plus, X } from "lucide-react";
 
 const TOGGLES = [
   { k: "voice_reply", label: "Notes vocales", desc: "Transcrire et répondre aux audios WhatsApp" },
+  { k: "order_via_whatsapp", label: "Commandes WhatsApp", desc: "L'IA peut prendre les commandes si le client ne peut pas commander sur le site" },
   { k: "image_reply", label: "Photos clients", desc: "Analyser les images (vision IA)" },
   { k: "send_product_images", label: "Envoi d'images produits", desc: "Le bot envoie les visuels VSM Collection" },
   { k: "auto_human_transfer", label: "Transfert humain auto", desc: "Si le bot ne sait pas, escalade à l'équipe" },

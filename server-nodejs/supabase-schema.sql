@@ -255,5 +255,11 @@ create policy "Anon delete whatsapp-media" on storage.objects
   for delete using (bucket_id = 'whatsapp-media');
 
 -- ============================================================================
+-- MIGRATION v6 — commandes WhatsApp + automatisations (config JSONB)
+-- Les tables orders / order_items / couriers existent déjà (site e-commerce).
+-- Les règles d'automation sont stockées dans bot_config.behavior.automations
+-- ============================================================================
+
+-- ============================================================================
 -- DONE
 -- ============================================================================

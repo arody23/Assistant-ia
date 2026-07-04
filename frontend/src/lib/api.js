@@ -357,6 +357,26 @@ const dataApi = {
     if (!r.ok) throw new Error(data.error || "Mise à jour échouée");
     return data;
   },
+
+  async createOrder(payload) {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Création échouée");
+    return data;
+  },
+
+  async listCouriers() {
+    if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
+    const r = await fetch(`${NODE_URL}/api/admin/couriers`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Chargement livreurs échoué");
+    return data;
+  },
 };
 
 // ---- Playground (Groq via Node Railway, fallback Python local) ----

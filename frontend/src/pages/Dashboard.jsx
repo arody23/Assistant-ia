@@ -14,6 +14,7 @@ import Widget from "@/components/sections/Widget";
 import ChatbotAdmin from "@/components/sections/ChatbotAdmin";
 import MediaWhatsApp from "@/components/sections/MediaWhatsApp";
 import Orders from "@/components/sections/Orders";
+import Automations from "@/components/sections/Automations";
 import { api } from "@/lib/api";
 import { supabase, TABLES } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ const SECTIONS = {
   overview: { label: "Overview", crumb: "Tableau de bord", Comp: Overview },
   conversations: { label: "Conversations", crumb: "Messages clients", Comp: Conversations },
   orders: { label: "Commandes", crumb: "Boutique & WhatsApp", Comp: Orders },
+  automations: { label: "Automatisations", crumb: "Règles SI… ALORS…", Comp: Automations },
   playground: { label: "Playground", crumb: "Test du bot", Comp: Playground },
   instructions: { label: "Prompt principal", crumb: "Instructions IA de base", Comp: Instructions },
   sections: { label: "Mes sections", crumb: "Blocs personnalisés", Comp: SectionsPerso },
