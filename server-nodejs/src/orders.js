@@ -7,6 +7,12 @@ import { getSupabase, getConfig } from "./supabase.js";
 import { log } from "./logger.js";
 import { runOrderAutomations } from "./automations.js";
 
+/** Valeurs alignées sur les CHECK constraints Supabase (e-commerce). */
+export const ORDER_SOURCE_WEBSITE = "website";
+export const ORDER_SOURCE_MANUAL = "manual";
+export const ORDER_STATUS_NEW = "nouvelle";
+export const WA_BOT_NOTE = "📱 Commande WhatsApp bot";
+
 function db() {
   const c = getSupabase();
   if (!c) throw new Error("Supabase non configuré");
@@ -26,8 +32,8 @@ export async function createOrderRecord(body, cfg = null) {
     urgent,
     delivery_fee = 0,
     items = [],
-    status = "pending",
-    order_source = "whatsapp_bot",
+    status = ORDER_STATUS_NEW,
+    order_source = ORDER_SOURCE_MANUAL,
     courier_id,
   } = body || {};
 
@@ -43,7 +49,10 @@ export async function createOrderRecord(body, cfg = null) {
   const fee = Number(delivery_fee) || 0;
   const total = itemsTotal + fee;
 
-  const orderNotes = [notes, urgent ? "⚡ LIVRAISON URGENTE" : null].filter(Boolean).join("\n");
+  const orderNotes = [
+    notes,
+    urgent ? "⚡ LIVRAISON URGENTE" : null,
+  ].filter(Boolean).join("\n");
 
   const { data: order, error: orderErr } = await db()
     .from("orders")

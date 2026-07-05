@@ -3,7 +3,7 @@
  */
 
 import { getSupabase } from "./supabase.js";
-import { createOrderRecord } from "./orders.js";
+import { createOrderRecord, ORDER_STATUS_NEW, ORDER_SOURCE_MANUAL, WA_BOT_NOTE } from "./orders.js";
 import { log } from "./logger.js";
 import {
   getCustomerCheckoutContext,
@@ -306,6 +306,7 @@ export async function processOrderBotReply({ reply, profile, phone, catalog, cfg
 
     try {
       const notes = [
+        WA_BOT_NOTE,
         draft.delivery_zone_name ? `Commune: ${draft.delivery_zone_name}` : null,
         draft.delivery_fee ? `Frais livraison: ${draft.delivery_fee} FC` : null,
       ].filter(Boolean).join(" · ");
@@ -319,8 +320,8 @@ export async function processOrderBotReply({ reply, profile, phone, catalog, cfg
         urgent: !!draft.urgent,
         notes,
         items: draft.items,
-        order_source: "whatsapp_bot",
-        status: "pending",
+        order_source: ORDER_SOURCE_MANUAL,
+        status: ORDER_STATUS_NEW,
       }, cfg);
 
       await log("success", `Commande #${order.id} créée via WA (${phone})`);

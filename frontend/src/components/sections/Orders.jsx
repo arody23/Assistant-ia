@@ -4,7 +4,15 @@ import { RefreshCw, Package, Zap, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
+function isWaBotOrder(order) {
+  return order.order_source === "whatsapp_bot" || (order.notes || "").includes("WhatsApp bot");
+}
+
 const STATUS_TONE = {
+  nouvelle: "orange",
+  traitée: "green",
+  expédiée: "green",
+  annulée: "red",
   pending: "orange",
   confirmed: "green",
   delivered: "green",
@@ -93,7 +101,8 @@ export default function Orders() {
         delivery_address: form.delivery_address,
         delivery_date: form.delivery_date,
         urgent: form.urgent,
-        order_source: "dashboard",
+        order_source: "manual",
+        notes: "📋 Commande dashboard admin",
         items: [{
           product_name: form.product_name,
           size: form.size,
@@ -176,7 +185,7 @@ export default function Orders() {
                       <div className="text-xs text-[var(--vsm-grey)]">{o.customer_phone}</div>
                       <div className="text-xs text-[var(--vsm-grey-2)] truncate max-w-[180px]">{o.delivery_address}</div>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {o.order_source === "whatsapp_bot" && <Pill tone="red">Bot WA</Pill>}
+                        {isWaBotOrder(o) && <Pill tone="red">Bot WA</Pill>}
                         {isUrgent(o) && <Pill tone="orange"><Zap size={10} className="inline mr-0.5" />Urgent</Pill>}
                       </div>
                     </td>
