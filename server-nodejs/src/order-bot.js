@@ -24,6 +24,10 @@ const MARKER_PATTERNS = [
   /\bORDER_BOT:\s*(\{[\s\S]*?\})\s*\)?/i,
 ];
 
+export function detectOrderIntent(text) {
+  return ORDER_INTENT.test(text || "");
+}
+
 export function detectCancelOrder(text) {
   return CANCEL_INTENT.test(text || "");
 }

@@ -447,6 +447,7 @@ async function handleMessage(msg) {
       extra: orderBlock,
     });
     if (!reply) {
+      try { await chat.clearState(); } catch {}
       dismissMessage(msg);
       return;
     }
@@ -516,6 +517,10 @@ async function handleMessage(msg) {
     await log("success", `Répondu à ${displayName} via ${model}`);
   } catch (e) {
     await log("error", `Handler message: ${e.message}`);
+    try {
+      const chat = await msg.getChat();
+      await chat.clearState();
+    } catch {}
   }
 }
 
