@@ -91,6 +91,12 @@ Réponds UNIQUEMENT en JSON valide:
   ].filter(Boolean).join("\n");
 
   const archived = detectArchivedCollection(searchTerms, cfg);
+  const guessNorm = (parsed.product_guess || "").toLowerCase();
+  const guessIsActive = names.some((n) => {
+    const nn = n.toLowerCase();
+    return guessNorm && (nn.includes(guessNorm) || guessNorm.includes(nn));
+  });
+
   const lines = [
     "ANALYSE IMAGE:",
     `- VSM: ${parsed.is_vsm_product} (${parsed.confidence})`,
@@ -101,10 +107,10 @@ Réponds UNIQUEMENT en JSON valide:
 
   if (parsed.is_vsm_product === "no") {
     lines.push(`→ ${substitutePlaceholders(getPrompts(cfg).not_in_catalog, { COLLECTIONS: names })}`);
-  } else if (archived) {
+  } else if (archived && !guessIsActive) {
     lines.push(`→ ${buildArchivedHint(cfg, archived, collectionsSummary || names)}`);
   } else {
-    lines.push("→ Croise avec le catalogue pour prix, stock et lien produit.");
+    lines.push("→ Utilise UNIQUEMENT le catalogue injecté pour prix/stock. Ne dis pas qu'une collection active est discontinuée.");
   }
 
   return {

@@ -200,7 +200,12 @@ export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext
   if (visionContext) parts.push(`--- ANALYSE IMAGE\n${visionContext}`);
   if (catalogContext) {
     parts.push(`--- CATALOGUE VSM (source de vérité produits)\n${catalogContext}`);
-    parts.push("RÈGLE CATALOGUE: utilise uniquement ces données pour prix/stock/liens. Ne jamais inventer une disponibilité.");
+    parts.push([
+      "RÈGLES CATALOGUE:",
+      "- Une seule collection par réponse (celle du catalogue ci-dessus).",
+      "- Prix et stock: UNIQUEMENT les données catalogue. Ne jamais inventer.",
+      "- Classic of life et Renescentia sont actives si listées ci-dessus.",
+    ].join("\n"));
   }
   if (extra) parts.push(extra);
 

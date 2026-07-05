@@ -19,20 +19,19 @@ import os from "os";
 
 import { getConfig, upsertSession, upsertConversation, insertMessages, recentHistory, getConversationByPhone, updateConversationProfile, getWhatsappMedia } from "./supabase.js";
 import { generateReply, transcribeAudio, analyzeProductImage } from "./groq.js";
-import { searchCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
+import { resolveCatalog, productUrl, getActiveProductNames, buildAvailableSummary, getActiveProducts } from "./catalog.js";
 import { buildClientContextBlock } from "./prompt-builder.js";
 import { isOrderFlowActive, detectCancelOrder, buildOrderFlowBlock, processOrderBotReply, stripOrderBotMarkers } from "./order-bot.js";
 import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
-import { resolveWaIdentity } from "./phone-utils.js";
+import { resolveWaIdentity, checkoutPhone } from "./phone-utils.js";
 import {
   loadWaState,
   markReady,
   markProcessed,
   wasProcessed,
   normalizeMsgTimestamp,
-  clearProcessedIds,
 } from "./wa-session-state.js";
 
 const sessionDir = process.env.WA_SESSION_DIR || "./.wwebjs_auth";
@@ -91,8 +90,12 @@ function shouldIgnoreBacklog(msg) {
     return { ignore: true, reason: "antérieur au démarrage", msgId };
   }
 
-  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs && ageSec > 2) {
+  if (waState.warmupUntilMs && Date.now() < waState.warmupUntilMs) {
     return { ignore: true, reason: "backlog (warmup)", msgId };
+  }
+
+  if (waState.lastReadyAtSec && msgTs > 0 && msgTs < waState.lastReadyAtSec) {
+    return { ignore: true, reason: "antérieur au ready", msgId };
   }
 
   if (ageSec > maxMsgAgeSec) {
@@ -159,16 +162,18 @@ function bindClientEvents(waClient) {
   waClient.on("ready", async () => {
     isReady = false;
     waState = markReady(sessionDir, waState, { warmupMs });
-    waState = clearProcessedIds(sessionDir, waState);
     await snapshotAndMarkBacklog(waClient);
-    isReady = true;
     const me = waClient.info?.wid?.user || "";
-    await log("success", `Bot WhatsApp prêt · +${me} · anti-backlog ${warmupMs / 1000}s`);
+    await log("success", `Bot WhatsApp connecté · +${me} · warmup anti-backlog ${warmupMs / 1000}s`);
     await upsertSession({
       status: "ready", connected: true,
       phone_number: `+${me}`, qr_code: null,
       connected_at: new Date().toISOString(),
     });
+    setTimeout(async () => {
+      isReady = true;
+      await log("info", "Warmup terminé — le bot accepte les nouveaux messages");
+    }, warmupMs);
   });
 
   waClient.on("disconnected", async (reason) => {
@@ -296,6 +301,7 @@ export async function startWhatsApp() {
 }
 
 async function handleMessage(msg) {
+  let chat;
   try {
     if (!isReady) {
       dismissMessage(msg);
@@ -318,7 +324,7 @@ async function handleMessage(msg) {
     }
 
     const behavior = cfg.behavior || {};
-    const chat = await msg.getChat();
+    chat = await msg.getChat();
     if (chat.isGroup && behavior.ignore_groups !== false) {
       dismissMessage(msg);
       return;
@@ -334,6 +340,8 @@ async function handleMessage(msg) {
     let mediaType = "text";
     let visionContext = "";
     let visionSearchTerms = "";
+
+    let visionProductGuess = "";
 
     if (msg.type === "chat" || msg.type === "text") {
       userText = msg.body || "";
@@ -376,7 +384,8 @@ async function handleMessage(msg) {
         userText = vision.userMessage;
         visionContext = vision.visionContext;
         visionSearchTerms = vision.searchTerms;
-        await log("info", `Image analysée · VSM=${vision.parsed.is_vsm_product} · ${vision.parsed.product_guess || "?"}`);
+        visionProductGuess = vision.parsed.product_guess || "";
+        await log("info", `Image analysée · VSM=${vision.parsed.is_vsm_product} · ${visionProductGuess || "?"}`);
       }
     } else {
       userText = "[Le client a envoyé un média non supporté pour le moment]";
@@ -389,21 +398,18 @@ async function handleMessage(msg) {
 
     const contact = await msg.getContact();
     const { phone, e164 } = resolveWaIdentity(contact, msg.from);
-    const checkoutPhone = e164 || phone;
     const displayName = contact.pushname || contact.name || contact.shortName || phone;
 
     try { await chat.sendStateTyping(); } catch {}
     await sleep(replyDelayMs(cfg));
 
-    const existingConv = await getConversationByPhone(phone)
-      || (e164 && e164 !== phone ? await getConversationByPhone(e164) : null);
-
+    const existingConv = await getConversationByPhone(phone);
+    const profile = existingConv?.profile || {};
+    const customerPhone = checkoutPhone({ e164, profile, fallbackPhone: phone });
     let history = [];
     if (existingConv?.id && behavior.remember_history !== false) {
       history = await recentHistory(existingConv.id, cfg.memory_msgs || 8);
     }
-
-    const profile = existingConv?.profile || {};
 
     if (detectCancelOrder(userText) && profile?.order_draft?.status && profile.order_draft.status !== "done") {
       const convId = existingConv?.id;
@@ -419,6 +425,7 @@ async function handleMessage(msg) {
       dismissMessage(msg);
       return;
     }
+
     const clientContext = buildClientContextBlock({
       name: displayName,
       status: profile.status,
@@ -429,13 +436,23 @@ async function handleMessage(msg) {
       notes: existingConv?.notes,
     });
 
-    let catalog = await searchCatalog(visionSearchTerms || userText, cfg);
+    let catalog = await resolveCatalog({
+      userText,
+      visionGuess: visionProductGuess,
+      visionSearchTerms,
+      pinnedProductName: profile.pinned_product_name,
+      cfg,
+    });
     if (mediaType === "image" && !catalog.context) {
-      catalog = await searchCatalog("collections produits disponibles vsm", cfg);
+      catalog = await resolveCatalog({
+        userText: "collections produits disponibles vsm",
+        visionGuess: visionProductGuess,
+        cfg,
+      });
     }
 
     const orderActive = isOrderFlowActive(cfg, profile, userText);
-    const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, checkoutPhone) : "";
+    const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, customerPhone) : "";
 
     let { reply, model } = await generateReply({
       message: userText,
@@ -454,7 +471,7 @@ async function handleMessage(msg) {
 
     let orderProfilePatch = null;
     if (orderActive) {
-      const processed = await processOrderBotReply({ reply, profile, phone: checkoutPhone, catalog, cfg });
+      const processed = await processOrderBotReply({ reply, profile, phone: customerPhone, catalog, cfg });
       reply = processed.reply;
       if (processed.profilePatch) {
         orderProfilePatch = { ...profile, ...processed.profilePatch };
@@ -503,9 +520,14 @@ async function handleMessage(msg) {
     let finalProfile = null;
     if (orderProfilePatch) finalProfile = { ...profile, ...orderProfilePatch };
     if (profilePatch) finalProfile = { ...(finalProfile || profile), ...profilePatch };
-    if (finalProfile && convId) {
-      if (e164) finalProfile = { ...finalProfile, wa_e164: e164 };
-      await updateConversationProfile(convId, { profile: finalProfile });
+    if (convId) {
+      const patch = { ...(finalProfile || profile) };
+      if (e164) patch.wa_e164 = e164;
+      if (catalog.primary && (catalog.matchScore || 0) >= 50) {
+        patch.pinned_product_name = catalog.primary.name;
+        patch.pinned_product_id = catalog.primary.id;
+      }
+      await updateConversationProfile(convId, { profile: patch });
     }
     if (conversationId) {
       const ts = new Date().toISOString();
@@ -517,10 +539,7 @@ async function handleMessage(msg) {
     await log("success", `Répondu à ${displayName} via ${model}`);
   } catch (e) {
     await log("error", `Handler message: ${e.message}`);
-    try {
-      const chat = await msg.getChat();
-      await chat.clearState();
-    } catch {}
+    try { await chat?.clearState?.(); } catch {}
   }
 }
 

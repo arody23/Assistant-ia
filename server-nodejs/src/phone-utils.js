@@ -1,44 +1,52 @@
 /**
- * Normalise le téléphone WhatsApp pour checkout / commandes.
- * Priorité : contact.number (vrai numéro) avant l'ID @lid.
+ * Identité WhatsApp — sépare clé conversation (@lid) et téléphone checkout (E.164).
  */
 
 export function digitsOnly(s) {
   return String(s || "").replace(/\D/g, "");
 }
 
-/** Extrait un numéro E.164 Congo (+242…) si possible. */
+/** Numéro Congo valide uniquement — jamais un Linked ID (14-15 chiffres). */
 export function toE164(raw) {
   const d = digitsOnly(raw);
   if (!d) return "";
+  if (d.length >= 14) return "";
   if (d.startsWith("242") && d.length >= 12) return `+${d}`;
   if (d.length === 9) return `+242${d}`;
-  if (d.length >= 10 && d.length <= 15) return `+${d}`;
+  if (d.length >= 10 && d.length <= 13) return `+${d}`;
   return "";
 }
 
 /**
  * @param {object} contact - contact whatsapp-web.js
- * @param {string} msgFrom - msg.from (ex. 242…@c.us ou …@lid)
- * @returns {{ phone: string, waChatId: string, e164: string }}
+ * @param {string} msgFrom - ex. 242…@c.us ou …@lid
  */
 export function resolveWaIdentity(contact, msgFrom) {
-  const waChatId = String(msgFrom || "")
+  const rawFrom = String(msgFrom || "");
+  const isLid = /@lid$/i.test(rawFrom);
+
+  const waChatId = rawFrom
     .replace(/@c\.us$/i, "")
     .replace(/@lid$/i, "")
     .replace(/@s\.whatsapp\.net$/i, "");
 
-  const fromContact = toE164(contact?.number || contact?.id?.user || "");
-  const fromMsg = toE164(waChatId);
+  const e164 = toE164(contact?.number || contact?.id?.user || "");
+  const phone = isLid ? `${waChatId}@lid` : (e164 || waChatId);
 
-  const e164 = fromContact || fromMsg || "";
-  const phone = e164 || waChatId || msgFrom || "";
-
-  return { phone, waChatId, e164 };
+  return { phone, waChatId, e164, isLid };
 }
 
-/** 9 derniers chiffres pour recherche orders/profiles. */
 export function phoneTail(phone) {
   const d = digitsOnly(phone);
+  if (!d || d.length >= 14) return "";
   return d.length >= 9 ? d.slice(-9) : d;
+}
+
+/** Téléphone pour checkout : E.164 contact, profil sauvegardé, ou 9 derniers chiffres. */
+export function checkoutPhone({ e164, profile = {}, fallbackPhone = "" }) {
+  if (e164) return e164;
+  if (profile.wa_e164) return profile.wa_e164;
+  const tail = phoneTail(fallbackPhone);
+  if (tail) return `+242${tail}`;
+  return "";
 }

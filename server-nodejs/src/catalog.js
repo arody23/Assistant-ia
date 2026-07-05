@@ -112,6 +112,7 @@ function buildContext(entries, query) {
       product.description ? `  Description: ${product.description.trim().slice(0, 280)}` : null,
       `  Variantes${askedSize || askedColor ? " (filtrées)" : ""}:`,
       summarizeVariants(allVariants, askedSize, askedColor),
+      "  RÈGLE: cite UNIQUEMENT ces variantes pour stock/tailles.",
     ].filter(Boolean).join("\n");
   });
   return lines.join("\n\n");
@@ -201,4 +202,65 @@ export async function searchCatalog(query, cfg = {}) {
     primary,
     matchScore,
   };
+}
+
+function findProductByGuess(products, guess) {
+  if (!guess?.trim()) return null;
+  const g = norm(guess);
+  const gSlug = g.replace(/\s+/g, "-");
+  return products.find((p) => {
+    const slug = norm(p.slug || "");
+    const name = norm(p.name);
+    return slug === gSlug || slug === g || name === g || name.includes(g) || g.includes(name)
+      || slug.replace(/-/g, " ").includes(g);
+  }) || null;
+}
+
+async function catalogFromProduct(product, query, cfg, matchScore = 100) {
+  const supabase = getSupabase();
+  if (!supabase) return { products: [], context: "", primary: null, matchScore: 0 };
+  const { data: variants } = await supabase.from("product_variants").select("*").eq("product_id", product.id);
+  const entry = { product, variants: variants || [], score: matchScore };
+  return {
+    products: [product],
+    context: buildContext([entry], query),
+    primary: product,
+    matchScore,
+  };
+}
+
+const FOLLOWUP_HINT = /\b(taille|couleur|stock|prix|xl|xxl|3xl|commander|oui|non|dispo)\b/i;
+
+/**
+ * Catalogue ancré — vision > produit épinglé (suivi) > recherche texte.
+ */
+export async function resolveCatalog({
+  userText = "",
+  visionGuess = "",
+  visionSearchTerms = "",
+  pinnedProductName = "",
+  cfg = {},
+}) {
+  const products = await getActiveProducts();
+  if (!products.length) return { products: [], context: "", primary: null, matchScore: 0 };
+
+  const query = visionSearchTerms || userText;
+
+  const fromVision = findProductByGuess(products, visionGuess);
+  if (fromVision) return catalogFromProduct(fromVision, query, cfg, 100);
+
+  const pinned = findProductByGuess(products, pinnedProductName);
+  if (pinned && FOLLOWUP_HINT.test(userText)) {
+    return catalogFromProduct(pinned, query, cfg, 85);
+  }
+
+  const catalog = await searchCatalog(query, cfg);
+  if (visionGuess && catalog.primary) {
+    const forced = findProductByGuess(products, visionGuess);
+    if (forced && forced.id !== catalog.primary.id) {
+      return catalogFromProduct(forced, query, cfg, 95);
+    }
+  }
+
+  return catalog;
 }
