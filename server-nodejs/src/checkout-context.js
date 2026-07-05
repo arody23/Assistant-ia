@@ -40,6 +40,25 @@ export function matchDeliveryZone(text, zones = []) {
   return best;
 }
 
+const DELIVERY_QUERY =
+  /\b(livraison|frais de livraison|co[uû]t.*livraison|prix.*livraison|commune|zone de livraison|livrer|d[eé]lai.*livraison|combien.*livraison)\b/i;
+
+export function detectDeliveryQuery(text) {
+  return DELIVERY_QUERY.test(text || "");
+}
+
+export async function buildDeliveryContextBlock(userText = "") {
+  const zones = await getDeliveryZones();
+  if (!zones.length) {
+    await log("warn", "delivery zones: aucune zone active (DB vide ou erreur)");
+    return [
+      "--- FRAIS LIVRAISON",
+      "Données communes indisponibles. Ne pas inventer de tarif — indique que tu n'as pas l'info et propose le transfert humain.",
+    ].join("\n");
+  }
+  return formatDeliveryZonesCompact(zones, userText);
+}
+
 export function formatDeliveryZonesBlock(zones = []) {
   if (!zones.length) return "";
   const lines = zones.map((z) => {

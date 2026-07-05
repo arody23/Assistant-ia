@@ -26,6 +26,7 @@ import { shouldSendProductImage, markProductImageSent } from "./product-images.j
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
 import { log } from "./logger.js";
 import { resolveWaIdentity, checkoutPhone } from "./phone-utils.js";
+import { detectDeliveryQuery, buildDeliveryContextBlock } from "./checkout-context.js";
 import {
   loadWaState,
   markReady,
@@ -453,6 +454,10 @@ async function handleMessage(msg) {
 
     const orderActive = isOrderFlowActive(cfg, profile, userText);
     const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, customerPhone) : "";
+    const deliveryBlock = !orderActive && detectDeliveryQuery(userText)
+      ? await buildDeliveryContextBlock(userText)
+      : "";
+    const extra = [orderBlock, deliveryBlock].filter(Boolean).join("\n\n");
 
     let { reply, model } = await generateReply({
       message: userText,
@@ -461,7 +466,7 @@ async function handleMessage(msg) {
       catalogContext: catalog.context,
       visionContext,
       clientContext,
-      extra: orderBlock,
+      extra,
     });
     if (!reply) {
       try { await chat.clearState(); } catch {}

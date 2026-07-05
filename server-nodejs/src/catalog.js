@@ -123,9 +123,19 @@ function buildContext(entries, query) {
  */
 export async function getActiveProducts() {
   const supabase = getSupabase();
-  if (!supabase) return [];
+  if (!supabase) {
+    await log("error", "catalog: Supabase non configuré");
+    return [];
+  }
   const { data, error } = await supabase.from("products").select("*").eq("is_active", true);
-  if (error || !data?.length) return [];
+  if (error) {
+    await log("error", `catalog products: ${error.message}`);
+    return [];
+  }
+  if (!data?.length) {
+    await log("warn", "catalog: aucun produit actif");
+    return [];
+  }
   return data;
 }
 

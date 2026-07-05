@@ -92,8 +92,9 @@ Réponds UNIQUEMENT en JSON valide:
 
   const archived = detectArchivedCollection(searchTerms, cfg);
   const guessNorm = (parsed.product_guess || "").toLowerCase();
-  const guessIsActive = names.some((n) => {
-    const nn = n.toLowerCase();
+  const activeNames = productNames.length ? productNames : ["Renescentia", "Classic of life"];
+  const guessIsActive = activeNames.some((n) => {
+    const nn = (n || "").toLowerCase();
     return guessNorm && (nn.includes(guessNorm) || guessNorm.includes(nn));
   });
 
