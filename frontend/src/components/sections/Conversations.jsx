@@ -70,6 +70,30 @@ export default function Conversations() {
 
   const setProfileKey = (k, v) => setProfile({ ...profile, [k]: v });
 
+  const segmentLabel = (c) => {
+    const seg = c?.profile?.crm?.last_segment;
+    const map = {
+      prospect_cold: "Froid",
+      prospect_warm: "Tiède",
+      prospect_hot: "Chaud",
+      client: "Client",
+      client_loyal: "Fidèle",
+      order_abandoned: "Abandon",
+      order_done: "Commandé",
+      support: "SAV",
+      info: "Info",
+    };
+    return map[seg] || null;
+  };
+
+  const segmentTone = (seg) => {
+    if (seg === "prospect_hot") return "red";
+    if (seg === "prospect_warm") return "orange";
+    if (seg === "support") return "red";
+    if (seg === "order_done" || seg === "client_loyal") return "green";
+    return "grey";
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 sm:gap-6">
       <Card title="Inbox" subtitle={`${list.length} conversation${list.length>1?"s":""}`} testid="card-conv-list">
@@ -96,6 +120,12 @@ export default function Conversations() {
                     <span className="text-[10px] text-[var(--vsm-grey-2)] font-mono shrink-0">{c.messages_count || 0}</span>
                   </div>
                   <div className="text-xs text-[var(--vsm-grey)] truncate mt-0.5">{c.last_message || "—"}</div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {segmentLabel(c) && (
+                      <Pill tone={segmentTone(c.profile?.crm?.last_segment)}>{segmentLabel(c)}</Pill>
+                    )}
+                    {(c.interest_score || 0) > 0 && <Pill tone="orange">intérêt {c.interest_score}</Pill>}
+                  </div>
                 </div>
               </button>
             ))}
@@ -150,6 +180,40 @@ export default function Conversations() {
                 Kit payé (boutique)
               </label>
             </div>
+            {(profile.crm || profile.sale_flow || profile.tags?.length) ? (
+              <div className="p-2 border border-[var(--vsm-border)] bg-[var(--vsm-void)] space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--vsm-grey)]">CRM automatique (IA)</div>
+                <div className="flex flex-wrap gap-1">
+                  {profile.crm?.last_segment && (
+                    <Pill tone={segmentTone(profile.crm.last_segment)}>
+                      {segmentLabel({ profile })}
+                    </Pill>
+                  )}
+                  {profile.crm?.purchase_probability != null && (
+                    <Pill tone="orange">achat {profile.crm.purchase_probability}%</Pill>
+                  )}
+                  {profile.crm?.urgency && profile.crm.urgency !== "low" && (
+                    <Pill tone="red">urgence {profile.crm.urgency}</Pill>
+                  )}
+                  {profile.crm?.last_sentiment && profile.crm.last_sentiment !== "neutral" && (
+                    <Pill tone="grey">{profile.crm.last_sentiment}</Pill>
+                  )}
+                  {profile.sale_flow?.state && profile.sale_flow.state !== "idle" && (
+                    <Pill tone="red">flux {profile.sale_flow.state}</Pill>
+                  )}
+                  {(profile.tags || []).slice(-4).map((t) => (
+                    <Pill key={t} tone="grey">{t}</Pill>
+                  ))}
+                </div>
+                {profile.sale_flow?.product_name && (
+                  <div className="text-xs text-[var(--vsm-grey)]">
+                    Produit en cours : {profile.sale_flow.product_name}
+                    {profile.sale_flow.size ? ` · ${profile.sale_flow.size}` : ""}
+                    {profile.sale_flow.color ? ` · ${profile.sale_flow.color}` : ""}
+                  </div>
+                )}
+              </div>
+            ) : null}
             <Field label="Résumé (injecté dans le prompt)">
               <Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="ex: Intéressé par Renescentia, attend validation ambassadeur…" />
             </Field>

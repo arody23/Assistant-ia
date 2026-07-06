@@ -92,17 +92,43 @@ export function buildStyleBlock(cfg = {}) {
   ].join(" ");
 }
 
-/** Règles strictes : ne répondre qu'à partir des sources configurées dans le dashboard. */
+const DEFAULT_STRICT_RULES = `--- RÈGLES ABSOLUES (ANTI-SUPPOSITION)
+1. Sources autorisées UNIQUEMENT : prompt principal, sections dashboard, capacités métier, catalogue injecté, contexte client.
+2. N'invente JAMAIS : collection, prix, stock, taille, couleur, délai, procédure.
+3. Ne complète pas avec ta connaissance générale streetwear.
+4. Si une info manque : reformule comme un conseiller (« cette collection ne fait pas partie de nos collections actuellement »).
+5. Ne dis jamais : « je n'ai pas trouvé », « erreur », « la base ne contient pas ».
+6. Transfert humain (phrase type) : « {TRANSFER_HUMAN} »`;
+
+const DEFAULT_CATALOG_RULES = `--- RÈGLES CATALOGUE
+- Une seule collection par réponse (celle du catalogue injecté).
+- Prix : uniquement les données catalogue.
+- Stock détaillé : uniquement après taille ET couleur confirmées par le client.
+- Ne jamais inventer une variante.`;
+
+const DEFAULT_CONVERSATION_RULES = `--- POLITIQUE RÉPONSE
+Tu es un conseiller VSM Collection, jamais une IA ni une base de données.
+Réponses : 1 à 3 phrases, chaleureuses, commerciales, naturelles.
+Suis strictement le bloc FLUX VENTE s'il est présent.`;
+
+/** Règles strictes — surchargeables via dashboard behavior.strict_rules */
 export function buildStrictKnowledgeRulesBlock(cfg = {}) {
+  const b = getBehavior(cfg);
   const transfer = getPrompts(cfg).transfer_human || "Je transfère ta demande à notre équipe humaine.";
-  return [
-    "--- RÈGLES ABSOLUES (ANTI-SUPPOSITION)",
-    "1. Sources autorisées UNIQUEMENT : prompt principal, base de connaissance (sections dashboard), capacités métier, catalogue produits, contexte client.",
-    "2. N'invente JAMAIS : prix, stock, tailles, délais, procédures, avantages, commissions, URLs, conditions du programme ambassadeur.",
-    "3. Ne complète PAS avec des suppositions ni ta connaissance générale sur la marque ou le streetwear.",
-    "4. Si une information n'est pas explicitement dans ces sources : dis-le clairement (« Je n'ai pas cette information ») et propose le transfert humain.",
-    `5. Transfert humain (phrase type) : « ${transfer} »`,
-  ].join("\n");
+  const tpl = (b.strict_rules || DEFAULT_STRICT_RULES).trim();
+  return substitutePlaceholders(tpl, { TRANSFER_HUMAN: transfer });
+}
+
+/** Règles catalogue — surchargeables via dashboard behavior.catalog_rules */
+export function buildCatalogRulesBlock(cfg = {}) {
+  const b = getBehavior(cfg);
+  return (b.catalog_rules || DEFAULT_CATALOG_RULES).trim();
+}
+
+/** Politique conversationnelle — surchargeable via behavior.conversation_rules */
+export function buildConversationRulesBlock(cfg = {}) {
+  const b = getBehavior(cfg);
+  return (b.conversation_rules || DEFAULT_CONVERSATION_RULES).trim();
 }
 
 /** Blocs personnalisés créés depuis le dashboard (prompts + champs structurés). */
@@ -171,6 +197,13 @@ export function buildClientContextBlock(client = {}) {
   if (client.kit_paid === true) lines.push("Kit ambassadeur: payé en boutique");
   if (client.kit_paid === false) lines.push("Kit ambassadeur: non payé — orienter vers la boutique physique");
   if (client.ambassador_applied === true) lines.push("Candidature ambassadeur: déposée sur ambassadeur.vsmcollection.com");
+  if (client.crm?.last_segment) lines.push(`Segment CRM (auto): ${client.crm.last_segment}`);
+  if (client.crm?.purchase_probability != null) lines.push(`Probabilité achat: ${client.crm.purchase_probability}%`);
+  if (client.crm?.urgency) lines.push(`Urgence: ${client.crm.urgency}`);
+  if (client.crm?.last_sentiment) lines.push(`Sentiment: ${client.crm.last_sentiment}`);
+  if (client.sale_flow?.state && client.sale_flow.state !== "idle") {
+    lines.push(`Flux vente: ${client.sale_flow.state}${client.sale_flow.product_name ? ` · ${client.sale_flow.product_name}` : ""}`);
+  }
   if (client.summary) lines.push(`Résumé des échanges: ${client.summary}`);
   if (client.notes) lines.push(`Notes internes: ${client.notes}`);
   return lines.join("\n");
@@ -200,12 +233,7 @@ export function buildSystemPrompt(cfg = {}, { catalogContext = "", visionContext
   if (visionContext) parts.push(`--- ANALYSE IMAGE\n${visionContext}`);
   if (catalogContext) {
     parts.push(`--- CATALOGUE VSM (source de vérité produits)\n${catalogContext}`);
-    parts.push([
-      "RÈGLES CATALOGUE:",
-      "- Une seule collection par réponse (celle du catalogue ci-dessus).",
-      "- Prix et stock: UNIQUEMENT les données catalogue. Ne jamais inventer.",
-      "- Classic of life et Renescentia sont actives si listées ci-dessus.",
-    ].join("\n"));
+    parts.push(buildCatalogRulesBlock(cfg));
   }
   if (extra) parts.push(extra);
 

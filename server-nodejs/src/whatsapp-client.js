@@ -24,6 +24,10 @@ import { buildClientContextBlock } from "./prompt-builder.js";
 import { isOrderFlowActive, detectCancelOrder, buildOrderFlowBlock, processOrderBotReply, stripOrderBotMarkers } from "./order-bot.js";
 import { shouldSendProductImage, markProductImageSent } from "./product-images.js";
 import { selectAmbassadorAssets, assetsToImages } from "./asset-picker.js";
+import { analyzeIntent } from "./intent-analyzer.js";
+import { advanceSaleFlow, getSaleFlow } from "./conversation-state.js";
+import { buildPolicyBlock, sanitizeReply, logDecision } from "./policy-gate.js";
+import { classifyConversation } from "./crm-classifier.js";
 import { log } from "./logger.js";
 import { resolveWaIdentity, checkoutPhone } from "./phone-utils.js";
 import { detectDeliveryQuery, buildDeliveryContextBlock } from "./checkout-context.js";
@@ -411,6 +415,8 @@ async function handleMessage(msg) {
     if (existingConv?.id && behavior.remember_history !== false) {
       history = await recentHistory(existingConv.id, cfg.memory_msgs || 8);
     }
+    const saleFlow = getSaleFlow(profile);
+    const intent = analyzeIntent(userText, { saleFlow, history });
 
     if (detectCancelOrder(userText) && profile?.order_draft?.status && profile.order_draft.status !== "done") {
       const convId = existingConv?.id;
@@ -433,6 +439,8 @@ async function handleMessage(msg) {
       tags: profile.tags,
       kit_paid: profile.kit_paid,
       ambassador_applied: profile.ambassador_applied,
+      crm: profile.crm,
+      sale_flow: saleFlow,
       summary: existingConv?.summary,
       notes: existingConv?.notes,
     });
@@ -453,11 +461,19 @@ async function handleMessage(msg) {
     }
 
     const orderActive = isOrderFlowActive(cfg, profile, userText);
+    const saleStep = advanceSaleFlow({
+      profile,
+      intent,
+      catalog,
+      userText,
+      orderActive,
+    });
     const orderBlock = orderActive ? await buildOrderFlowBlock(cfg, profile, catalog, customerPhone) : "";
     const deliveryBlock = !orderActive && detectDeliveryQuery(userText)
       ? await buildDeliveryContextBlock(userText)
       : "";
-    const extra = [orderBlock, deliveryBlock].filter(Boolean).join("\n\n");
+    const policyBlock = buildPolicyBlock(cfg);
+    const extra = [policyBlock, saleStep.instructionBlock, orderBlock, deliveryBlock].filter(Boolean).join("\n\n");
 
     let { reply, model } = await generateReply({
       message: userText,
@@ -468,6 +484,12 @@ async function handleMessage(msg) {
       clientContext,
       extra,
     });
+    await log("info", `Decision: ${logDecision({
+      intent: intent.primary,
+      state: saleStep.saleFlow?.state,
+      match: catalog.matchType,
+      product: catalog.primary?.name,
+    })}`);
     if (!reply) {
       try { await chat.clearState(); } catch {}
       dismissMessage(msg);
@@ -484,6 +506,7 @@ async function handleMessage(msg) {
     } else {
       reply = stripOrderBotMarkers(reply);
     }
+    reply = sanitizeReply(reply, { saleFlow: saleStep.saleFlow, orderActive });
 
     try { await chat.clearState(); } catch {}
     await msg.reply(reply);
@@ -520,14 +543,39 @@ async function handleMessage(msg) {
       await log("warn", `Médias WhatsApp: ${e.message}`);
     }
 
-    const conversationId = await upsertConversation({ phone, name: displayName, last_message: reply.slice(0, 200) });
+    const crm = classifyConversation({
+      userText,
+      profile,
+      orderActive,
+      orderDraft: orderProfilePatch?.order_draft || profile?.order_draft,
+      hasPastOrders: !!profile?.last_order_id,
+      messageCount: existingConv?.messages_count || 0,
+    });
+    const conversationId = await upsertConversation({
+      phone,
+      name: displayName,
+      last_message: reply.slice(0, 200),
+      interest_delta: crm.interest_delta || 0,
+    });
     const convId = existingConv?.id || conversationId;
     let finalProfile = null;
     if (orderProfilePatch) finalProfile = { ...profile, ...orderProfilePatch };
     if (profilePatch) finalProfile = { ...(finalProfile || profile), ...profilePatch };
     if (convId) {
-      const patch = { ...(finalProfile || profile) };
+      const patch = {
+        ...(finalProfile || profile),
+        sale_flow: saleStep.saleFlow,
+        tags: crm.tags,
+        crm: {
+          ...(profile.crm || {}),
+          ...(crm.crm || {}),
+        },
+      };
       if (e164) patch.wa_e164 = e164;
+      if (saleStep.resetPinned) {
+        patch.pinned_product_name = null;
+        patch.pinned_product_id = null;
+      }
       if (catalog.primary && (catalog.matchScore || 0) >= 50) {
         patch.pinned_product_name = catalog.primary.name;
         patch.pinned_product_id = catalog.primary.id;

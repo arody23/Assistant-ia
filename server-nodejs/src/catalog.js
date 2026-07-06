@@ -84,12 +84,27 @@ function variantLine(v) {
   return `  - ${v.color} / ${v.size}: ${stock}`;
 }
 
-function summarizeVariants(variants, askedSize, askedColor) {
+function summarizeVariants(variants, askedSize, askedColor, { revealStock = false } = {}) {
   let list = variants || [];
   if (askedSize) list = list.filter((v) => norm(v.size) === norm(askedSize));
   if (askedColor) list = list.filter((v) => norm(v.color) === norm(askedColor));
 
-  if (!list.length) return "  (aucune variante correspondante en stock)";
+  if (!list.length) return "  (aucune variante correspondante)";
+
+  if (!revealStock && !askedSize && !askedColor) {
+    const sizes = [...new Set(list.map((v) => (v.size || "").toUpperCase()).filter(Boolean))];
+    const colors = [...new Set(list.map((v) => v.color).filter(Boolean))];
+    return [
+      `  Tailles proposées: ${sizes.join(", ") || "—"}`,
+      `  Couleurs: ${colors.join(", ") || "—"}`,
+      "  (ne pas annoncer de quantités — demander taille puis couleur au client)",
+    ].join("\n");
+  }
+
+  if (!revealStock && askedSize && !askedColor) {
+    const colors = [...new Set(list.map((v) => v.color).filter(Boolean))];
+    return `  Couleurs pour taille ${askedSize}: ${colors.join(", ") || "—"} (quantités après choix couleur)`;
+  }
 
   const inStock = list.filter((v) => v.stock > 0);
   const lines = (inStock.length ? inStock : list).slice(0, 12).map(variantLine);
@@ -97,22 +112,23 @@ function summarizeVariants(variants, askedSize, askedColor) {
   return lines.join("\n");
 }
 
-function buildContext(entries, query) {
+function buildContext(entries, query, { revealStock = false } = {}) {
   const askedSize = parseSize(query);
   const lines = entries.map(({ product, variants }) => {
     const allVariants = variants || [];
     const askedColor = parseColor(query, allVariants);
     const totalStock = allVariants.reduce((s, v) => s + (v.stock || 0), 0);
+    const showStock = revealStock || (askedSize && askedColor);
     return [
       `• ${product.name.trim()} (id ${product.id})`,
       product.slug ? `  Slug: ${product.slug}` : null,
       `  Prix: ${formatPrice(product.price)} | Catégorie: ${product.category || "—"}`,
-      `  Stock total: ${totalStock} | Actif: ${product.is_active ? "oui" : "non"}`,
+      showStock ? `  Stock total: ${totalStock}` : "  Disponibilité: oui (détails stock après taille + couleur)",
       `  Lien: ${productUrl(product)}`,
-      product.description ? `  Description: ${product.description.trim().slice(0, 280)}` : null,
+      product.description ? `  Description: ${product.description.trim().slice(0, 200)}` : null,
       `  Variantes${askedSize || askedColor ? " (filtrées)" : ""}:`,
-      summarizeVariants(allVariants, askedSize, askedColor),
-      "  RÈGLE: cite UNIQUEMENT ces variantes pour stock/tailles.",
+      summarizeVariants(allVariants, askedSize, askedColor, { revealStock: showStock }),
+      showStock ? "  RÈGLE: cite UNIQUEMENT ces variantes pour stock." : "  RÈGLE: ne pas citer de quantités avant taille ET couleur.",
     ].filter(Boolean).join("\n");
   });
   return lines.join("\n\n");
@@ -149,9 +165,13 @@ export function buildAvailableSummary(products) {
     .join("\n");
 }
 
-export async function searchCatalog(query, cfg = {}) {
+function buildNames(products = []) {
+  return products.map((p) => (p.name || "").trim()).filter(Boolean);
+}
+
+async function fetchProductsAndVariants() {
   const supabase = getSupabase();
-  if (!supabase) return { products: [], context: "", primary: null };
+  if (!supabase) return { products: [], byProduct: {}, error: "supabase_missing" };
 
   const { data: products, error } = await supabase
     .from("products")
@@ -160,57 +180,120 @@ export async function searchCatalog(query, cfg = {}) {
 
   if (error) {
     await log("error", `catalog products: ${error.message}`);
-    return { products: [], context: "", primary: null, matchScore: 0 };
+    return { products: [], byProduct: {}, error: error.message };
   }
   if (!products?.length) {
     await log("warn", "catalog: aucun produit actif");
-    return { products: [], context: "", primary: null, matchScore: 0 };
+    return { products: [], byProduct: {}, error: "no_products" };
   }
 
   const ids = products.map((p) => p.id);
-  const { data: variants } = await supabase
+  const { data: variants, error: vErr } = await supabase
     .from("product_variants")
     .select("*")
     .in("product_id", ids);
+
+  if (vErr) await log("warn", `catalog variants: ${vErr.message}`);
 
   const byProduct = {};
   for (const v of variants || []) {
     (byProduct[v.product_id] ||= []).push(v);
   }
+  return { products, byProduct, error: null };
+}
 
+function scoreEntries(products, byProduct, query, cfg = {}) {
   const keywords = cfg.product_keywords || [];
-  const scored = products
-    .map((p) => ({ product: p, variants: byProduct[p.id] || [], score: scoreProduct(p, query, keywords) }))
-    .filter((e) => e.score > 0)
+  return products
+    .map((p) => ({
+      product: p,
+      variants: byProduct[p.id] || [],
+      score: scoreProduct(p, query, keywords),
+    }))
     .sort((a, b) => b.score - a.score);
+}
 
-  const catalogQuestion = CATALOG_HINTS.test(query) || keywords.some((k) => norm(query).includes(norm(k)));
-
-  let entries;
-  if (scored.length) {
-    entries = scored.slice(0, 1);
-  } else if (catalogQuestion) {
-    entries = products
-      .map((p) => ({
-        product: p,
-        variants: byProduct[p.id] || [],
-        score: scoreProduct(p, query, keywords),
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 1);
-  } else {
-    return { products: [], context: "", primary: null };
+export async function searchCatalog(query, cfg = {}) {
+  const { products, byProduct } = await fetchProductsAndVariants();
+  if (!products.length) {
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: 0,
+      matchType: "none",
+      candidates: [],
+      availableNames: [],
+    };
   }
 
-  const context = buildContext(entries, query);
-  const primary = entries[0]?.product || null;
-  const matchScore = entries[0]?.score ?? 0;
+  const scored = scoreEntries(products, byProduct, query, cfg);
+  const positive = scored.filter((e) => e.score > 0);
+  const availableNames = buildNames(products);
+  const keywords = cfg.product_keywords || [];
+  const catalogQuestion = CATALOG_HINTS.test(query) || keywords.some((k) => norm(query).includes(norm(k)));
 
+  if (!positive.length && !catalogQuestion) {
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: 0,
+      matchType: "none",
+      candidates: [],
+      availableNames,
+    };
+  }
+
+  const top = positive[0] || scored[0];
+  const second = positive[1];
+  const ambiguous = !!(top && second && top.score > 0 && second.score > 0 && (top.score - second.score <= 3));
+
+  if (ambiguous) {
+    const candidates = positive.slice(0, 4).map((e) => ({
+      id: e.product.id,
+      name: e.product.name,
+      slug: e.product.slug || "",
+      score: e.score,
+    }));
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: top.score,
+      matchType: "ambiguous",
+      candidates,
+      availableNames,
+    };
+  }
+
+  const entry = top || null;
+  if (!entry || !entry.product) {
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: 0,
+      matchType: "none",
+      candidates: [],
+      availableNames,
+    };
+  }
+
+  const context = buildContext([entry], query);
   return {
-    products: entries.map((e) => e.product),
+    products: [entry.product],
+    variants: entry.variants || [],
     context,
-    primary,
-    matchScore,
+    primary: entry.product,
+    matchScore: entry.score ?? 0,
+    matchType: (entry.score || 0) > 0 ? "exact" : "fallback",
+    candidates: [],
+    availableNames,
   };
 }
 
@@ -228,14 +311,30 @@ function findProductByGuess(products, guess) {
 
 async function catalogFromProduct(product, query, cfg, matchScore = 100) {
   const supabase = getSupabase();
-  if (!supabase) return { products: [], context: "", primary: null, matchScore: 0 };
+  if (!supabase) {
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: 0,
+      matchType: "none",
+      candidates: [],
+      availableNames: [],
+    };
+  }
   const { data: variants } = await supabase.from("product_variants").select("*").eq("product_id", product.id);
   const entry = { product, variants: variants || [], score: matchScore };
+  const products = await getActiveProducts();
   return {
     products: [product],
+    variants: variants || [],
     context: buildContext([entry], query),
     primary: product,
     matchScore,
+    matchType: "exact",
+    candidates: [],
+    availableNames: buildNames(products),
   };
 }
 
@@ -252,7 +351,18 @@ export async function resolveCatalog({
   cfg = {},
 }) {
   const products = await getActiveProducts();
-  if (!products.length) return { products: [], context: "", primary: null, matchScore: 0 };
+  if (!products.length) {
+    return {
+      products: [],
+      variants: [],
+      context: "",
+      primary: null,
+      matchScore: 0,
+      matchType: "none",
+      candidates: [],
+      availableNames: [],
+    };
+  }
 
   const query = visionSearchTerms || userText;
 

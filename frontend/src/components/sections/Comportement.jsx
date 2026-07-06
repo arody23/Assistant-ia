@@ -21,14 +21,41 @@ const DEFAULT_LANGS = [
   { code: "ln", label: "Lingala", enabled: false, reply_instruction: "Yano na Lingala." },
 ];
 
+const DEFAULT_PROMPTS = {
+  vision: "Analyse les photos clients VSM. Collections en vente: {COLLECTIONS}.",
+  discontinued: "Cette collection ({COLLECTION}) n'est plus commercialisée. Propose: {COLLECTIONS}.",
+  not_in_catalog: "Ce visuel n'est pas dans notre catalogue. Oriente vers: {COLLECTIONS}.",
+  night_mode: "Mode nuit: réponses courtes et directes.",
+};
+
 export default function Comportement({ config, updateConfig }) {
   const [behavior, setBehavior] = useState(config.behavior || {});
-  useEffect(() => { setBehavior(config.behavior || {}); }, [config]);
+  const [productKeywords, setProductKeywords] = useState((config.product_keywords || []).join(", "));
+  const [transferHuman, setTransferHuman] = useState(config.quick_replies?.transfer_human || "");
+  const [outOfStock, setOutOfStock] = useState(config.quick_replies?.out_of_stock || "");
+
+  useEffect(() => {
+    setBehavior(config.behavior || {});
+    setProductKeywords((config.product_keywords || []).join(", "));
+    setTransferHuman(config.quick_replies?.transfer_human || "");
+    setOutOfStock(config.quick_replies?.out_of_stock || "");
+  }, [config]);
 
   const langs = behavior.languages?.length ? behavior.languages : DEFAULT_LANGS;
+  const prompts = { ...DEFAULT_PROMPTS, ...(behavior.prompts || {}) };
 
   const setKey = (k, v) => setBehavior({ ...behavior, [k]: v });
-  const save = () => updateConfig({ behavior });
+  const setPrompt = (k, v) => setKey("prompts", { ...prompts, [k]: v });
+
+  const save = () => updateConfig({
+    behavior,
+    product_keywords: productKeywords.split(",").map((s) => s.trim()).filter(Boolean),
+    quick_replies: {
+      ...(config.quick_replies || {}),
+      transfer_human: transferHuman,
+      out_of_stock: outOfStock,
+    },
+  });
 
   const updateLang = (idx, patch) => {
     const next = [...langs];
@@ -80,25 +107,81 @@ export default function Comportement({ config, updateConfig }) {
         </div>
       </Card>
 
+      <Card title="Règles conversationnelles IA" subtitle="Source de vérité métier — le code n'injecte que la logique technique"
+        action={<RedButton onClick={save}>Sauver</RedButton>}>
+        <p className="text-xs text-[var(--vsm-grey)] mb-4">
+          Ces blocs remplacent les règles codées en dur. Utilisez {"{TRANSFER_HUMAN}"} dans les règles strictes.
+        </p>
+        <div className="space-y-4">
+          <Field label="Politique réponse (ton, longueur, interdictions)">
+            <Textarea rows={5} value={behavior.conversation_rules || ""} onChange={(e) => setKey("conversation_rules", e.target.value)}
+              placeholder="Ex: 1 à 3 phrases, ton conseiller VSM, jamais mentionner la base de données…" />
+          </Field>
+          <Field label="Règles anti-supposition">
+            <Textarea rows={6} value={behavior.strict_rules || ""} onChange={(e) => setKey("strict_rules", e.target.value)}
+              placeholder="Règles absolues : sources autorisées, interdictions d'invention…" />
+          </Field>
+          <Field label="Règles catalogue (stock, prix, collections)">
+            <Textarea rows={4} value={behavior.catalog_rules || ""} onChange={(e) => setKey("catalog_rules", e.target.value)}
+              placeholder="Ex: ne pas annoncer le stock avant taille + couleur…" />
+          </Field>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Phrase transfert humain">
+              <Input value={transferHuman} onChange={(e) => setTransferHuman(e.target.value)}
+                placeholder="Je transfère ta demande à notre équipe…" />
+            </Field>
+            <Field label="Phrase rupture stock">
+              <Input value={outOfStock} onChange={(e) => setOutOfStock(e.target.value)}
+                placeholder="Cette pièce est en rupture…" />
+            </Field>
+          </div>
+          <Field label="Mots-clés recherche catalogue" hint="Séparés par des virgules">
+            <Input value={productKeywords} onChange={(e) => setProductKeywords(e.target.value)}
+              placeholder="renescentia, classic of life, hoodie…" />
+          </Field>
+          <Field label="Collections archivées (non commercialisées)" hint="Séparées par des virgules">
+            <Input
+              value={(behavior.archived_collections || []).join(", ")}
+              onChange={(e) => setKey("archived_collections", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+              placeholder="vie sur moi, écrit vie…"
+            />
+          </Field>
+        </div>
+      </Card>
+
+      <Card title="Prompts vision & scénarios" subtitle="Vision image, collection discontinuée, hors catalogue"
+        action={<RedButton onClick={save}>Sauver</RedButton>}>
+        <div className="space-y-4">
+          <Field label="Prompt vision ({COLLECTIONS})">
+            <Textarea rows={3} value={prompts.vision || ""} onChange={(e) => setPrompt("vision", e.target.value)} />
+          </Field>
+          <Field label="Collection discontinuée ({COLLECTION}, {COLLECTIONS})">
+            <Textarea rows={2} value={prompts.discontinued || ""} onChange={(e) => setPrompt("discontinued", e.target.value)} />
+          </Field>
+          <Field label="Hors catalogue ({COLLECTIONS})">
+            <Textarea rows={2} value={prompts.not_in_catalog || ""} onChange={(e) => setPrompt("not_in_catalog", e.target.value)} />
+          </Field>
+          <Field label="Mode nuit">
+            <Textarea rows={2} value={prompts.night_mode || ""} onChange={(e) => setPrompt("night_mode", e.target.value)} />
+          </Field>
+        </div>
+      </Card>
+
       <Card title="Commandes WhatsApp" subtitle="Instructions pour la prise de commande via l'IA"
         action={<RedButton onClick={save}>Sauver</RedButton>}>
         <p className="text-xs text-[var(--vsm-grey)] mb-3">
           L'IA reçoit automatiquement le catalogue, les communes/frais de livraison et l'historique client (checkout).
-          Ajoute ici tes règles métier (délais, paiement, confirmation…).
         </p>
         <Textarea
           value={behavior.order_instructions || ""}
           onChange={(e) => setKey("order_instructions", e.target.value)}
-          placeholder="Ex: Toujours demander la commune. Paiement à la livraison en FC. Confirmer le total avant validation."
+          placeholder="Ex: Toujours demander la commune. Paiement à la livraison en FC."
           rows={5}
         />
       </Card>
 
-      <Card title="Capacités métier (personnalisées)" subtitle="Ajoute tes propres règles — ex: programme ambassadeur, kit boutique"
+      <Card title="Capacités métier (personnalisées)" subtitle="Règles additionnelles injectées au prompt"
         action={<RedButton onClick={save}>Sauver</RedButton>}>
-        <p className="text-xs text-[var(--vsm-grey)] mb-4">
-          Chaque capacité active ajoute une instruction au prompt du bot. Les capacités techniques ci-dessus restent gérées par les toggles.
-        </p>
         <div className="space-y-3">
           {customCaps.map((cap, i) => (
             <div key={cap.id || i} className="border border-[var(--vsm-border)] p-3 space-y-2">
@@ -107,16 +190,15 @@ export default function Comportement({ config, updateConfig }) {
                 <Input value={cap.label || ""} onChange={(e) => updateCap(i, { label: e.target.value })} placeholder="Nom" className="flex-1" />
                 <OutlineButton onClick={() => removeCap(i)}><X size={12} /></OutlineButton>
               </div>
-              <Input value={cap.description || ""} onChange={(e) => updateCap(i, { description: e.target.value })} placeholder="Description courte (dashboard)" />
-              <Input value={cap.instruction || ""} onChange={(e) => updateCap(i, { instruction: e.target.value })} placeholder="Instruction pour l'IA (ex: orienter vers la boutique pour le kit)" />
+              <Input value={cap.description || ""} onChange={(e) => updateCap(i, { description: e.target.value })} placeholder="Description courte" />
+              <Input value={cap.instruction || ""} onChange={(e) => updateCap(i, { instruction: e.target.value })} placeholder="Instruction pour l'IA" />
             </div>
           ))}
         </div>
         <OutlineButton onClick={addCapability} className="mt-3"><Plus size={12} className="mr-1" /> Ajouter une capacité</OutlineButton>
       </Card>
 
-      <Card title="Langues" subtitle="Plusieurs langues — le bot s'adapte au client"
-        action={<RedButton onClick={save}>Sauver</RedButton>}>
+      <Card title="Langues" action={<RedButton onClick={save}>Sauver</RedButton>}>
         <div className="flex flex-wrap gap-4 mb-4">
           <Field label="Langue par défaut">
             <Select value={behavior.primary_language || behavior.language || "fr"}
@@ -127,16 +209,15 @@ export default function Comportement({ config, updateConfig }) {
           <div className="flex items-end gap-3 pb-1">
             <Toggle checked={behavior.auto_detect_language !== false}
               onChange={(v) => setKey("auto_detect_language", v)} />
-            <span className="text-sm text-[var(--vsm-cream)]">Détection auto de la langue du client</span>
+            <span className="text-sm text-[var(--vsm-cream)]">Détection auto de la langue</span>
           </div>
         </div>
-
         <div className="space-y-3">
           {langs.map((l, i) => (
             <div key={`${l.code}-${i}`} className="grid grid-cols-1 md:grid-cols-[100px_1fr_1fr_auto_auto] gap-2 items-center border border-[var(--vsm-border)] p-3">
               <Input value={l.code} placeholder="code" onChange={(e) => updateLang(i, { code: e.target.value })} className="font-mono text-xs" />
-              <Input value={l.label} placeholder="Nom affiché" onChange={(e) => updateLang(i, { label: e.target.value })} />
-              <Input value={l.reply_instruction || ""} placeholder="Instruction (ex: Réponds en français)"
+              <Input value={l.label} placeholder="Nom" onChange={(e) => updateLang(i, { label: e.target.value })} />
+              <Input value={l.reply_instruction || ""} placeholder="Instruction langue"
                 onChange={(e) => updateLang(i, { reply_instruction: e.target.value })} />
               <Toggle checked={!!l.enabled} onChange={(v) => updateLang(i, { enabled: v })} />
               <OutlineButton onClick={() => removeLang(i)} disabled={langs.length <= 1}><X size={12} /></OutlineButton>
@@ -157,8 +238,8 @@ export default function Comportement({ config, updateConfig }) {
             </Select>
           </Field>
           <Field label="Longueur">
-            <Select value={behavior.length || "medium"} onChange={(e) => setKey("length", e.target.value)}>
-              <option value="short">Brèves</option>
+            <Select value={behavior.length || "short"} onChange={(e) => setKey("length", e.target.value)}>
+              <option value="short">Brèves (1-2 phrases)</option>
               <option value="medium">Moyennes</option>
               <option value="long">Détaillées</option>
             </Select>
