@@ -3,6 +3,7 @@ import { Card, OutlineButton, Pill, EmptyState } from "@/components/Primitives";
 import { Smartphone, CheckCircle2, AlertCircle, Loader2, QrCode, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { getNodeUrl } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 const STATUS_LABEL = {
@@ -25,7 +26,11 @@ export default function Connexion({ session, reloadAll }) {
     setResetting(true);
     try {
       const nodeUrl = getNodeUrl() || "http://localhost:3002";
-      const r = await fetch(`${nodeUrl}/api/reconnect`, { method: "POST" });
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {};
+      const r = await fetch(`${nodeUrl}/api/reconnect`, { method: "POST", headers });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || `Erreur serveur (${r.status})`);
 

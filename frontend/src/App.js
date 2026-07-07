@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "@/App.css";
 import Dashboard from "@/pages/Dashboard";
 import ChatbotAmbassador from "@/pages/ChatbotAmbassador";
+import Login from "@/pages/Login";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "sonner";
 
 const toastOptions = {
@@ -17,12 +20,22 @@ const toastOptions = {
 export default function App() {
   return (
     <div className="min-h-screen bg-[var(--vsm-black)] text-[var(--vsm-cream)]">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/chatbot" element={<ChatbotAmbassador />} />
-          <Route path="/*" element={<Dashboard />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/chatbot" element={<ChatbotAmbassador />} />
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/*"
+              element={(
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              )}
+            />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
       <Toaster position="bottom-right" toastOptions={toastOptions} />
     </div>
   );

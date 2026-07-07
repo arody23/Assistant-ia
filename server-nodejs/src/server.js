@@ -11,6 +11,7 @@ import { registerAmbassadorAssetRoutes } from "./ambassador-assets.js";
 import { registerWhatsappMediaRoutes } from "./whatsapp-assets.js";
 import { registerOrderRoutes } from "./orders.js";
 import { registerPlaygroundRoutes } from "./playground.js";
+import { adminGate } from "./auth-middleware.js";
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -18,6 +19,7 @@ const PORT = process.env.PORT || 3002;
 const origins = (process.env.CORS_ORIGINS || "*").split(",").map(s => s.trim());
 app.use(cors({ origin: origins.includes("*") ? true : origins }));
 app.use(express.json({ limit: "5mb" }));
+app.use(adminGate);
 
 let isClientReady = () => false;
 let getClient = () => null;

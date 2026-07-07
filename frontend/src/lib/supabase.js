@@ -11,6 +11,11 @@ if (!url || !anon) {
 }
 
 export const supabase = createClient(url || "https://placeholder.supabase.co", anon || "placeholder", {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
   realtime: { params: { eventsPerSecond: 5 } },
 });
 

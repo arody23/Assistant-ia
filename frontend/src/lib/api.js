@@ -6,6 +6,20 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const NODE_URL = getNodeUrl();
 export const API = BACKEND_URL ? `${BACKEND_URL}/api` : null;
 
+async function authHeaders(extra = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = { ...extra };
+  if (session?.access_token) {
+    headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  return headers;
+}
+
+async function nodeFetch(path, options = {}) {
+  const headers = await authHeaders(options.headers || {});
+  return fetch(`${NODE_URL}${path}`, { ...options, headers });
+}
+
 /**
  * Hybrid API client:
  *  - All persistent data (config, conversations, messages, logs, whatsapp session)
@@ -141,7 +155,7 @@ const dataApi = {
 
   async listAmbassadorAssets() {
     if (NODE_URL) {
-      const r = await fetch(`${NODE_URL}/api/admin/ambassador/assets`);
+      const r = await nodeFetch("/api/admin/ambassador/assets");
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Chargement échoué");
       return data;
@@ -164,7 +178,7 @@ const dataApi = {
     });
 
     if (NODE_URL) {
-      const r = await fetch(`${NODE_URL}/api/admin/ambassador/assets`, {
+      const r = await nodeFetch("/api/admin/ambassador/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -201,7 +215,7 @@ const dataApi = {
 
   async updateAmbassadorAsset(id, patch) {
     if (NODE_URL) {
-      const r = await fetch(`${NODE_URL}/api/admin/ambassador/assets/${id}`, {
+      const r = await nodeFetch(`/api/admin/ambassador/assets/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -222,7 +236,7 @@ const dataApi = {
 
   async reorderAmbassadorAssets(orderedIds) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/ambassador/assets/reorder`, {
+    const r = await nodeFetch("/api/admin/ambassador/assets/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderedIds }),
@@ -234,7 +248,7 @@ const dataApi = {
 
   async deleteAmbassadorAsset(id) {
     if (NODE_URL) {
-      const r = await fetch(`${NODE_URL}/api/admin/ambassador/assets/${id}`, { method: "DELETE" });
+      const r = await nodeFetch(`/api/admin/ambassador/assets/${id}`, { method: "DELETE" });
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
         throw new Error(data.error || "Suppression échouée");
@@ -276,7 +290,7 @@ const dataApi = {
 
   async listWhatsappMedia() {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media`);
+    const r = await nodeFetch("/api/admin/whatsapp/media");
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Chargement échoué");
     return data;
@@ -290,7 +304,7 @@ const dataApi = {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media`, {
+    const r = await nodeFetch("/api/admin/whatsapp/media", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -307,7 +321,7 @@ const dataApi = {
 
   async updateWhatsappMedia(id, patch) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/${id}`, {
+    const r = await nodeFetch(`/api/admin/whatsapp/media/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -319,7 +333,7 @@ const dataApi = {
 
   async reorderWhatsappMedia(orderedIds) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/reorder`, {
+    const r = await nodeFetch("/api/admin/whatsapp/media/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderedIds }),
@@ -331,7 +345,7 @@ const dataApi = {
 
   async deleteWhatsappMedia(id) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/whatsapp/media/${id}`, { method: "DELETE" });
+    const r = await nodeFetch(`/api/admin/whatsapp/media/${id}`, { method: "DELETE" });
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
       throw new Error(data.error || "Suppression échouée");
@@ -340,7 +354,7 @@ const dataApi = {
 
   async listOrders() {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/orders?limit=100`);
+    const r = await nodeFetch("/api/admin/orders?limit=100");
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Chargement commandes échoué");
     return data;
@@ -348,7 +362,7 @@ const dataApi = {
 
   async updateOrder(id, patch) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/orders/${id}`, {
+    const r = await nodeFetch(`/api/admin/orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -360,7 +374,7 @@ const dataApi = {
 
   async createOrder(payload) {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/orders`, {
+    const r = await nodeFetch("/api/admin/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -372,7 +386,7 @@ const dataApi = {
 
   async listCouriers() {
     if (!NODE_URL) throw new Error("REACT_APP_NODE_URL requis");
-    const r = await fetch(`${NODE_URL}/api/admin/couriers`);
+    const r = await nodeFetch("/api/admin/couriers");
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Chargement livreurs échoué");
     return data;
@@ -390,7 +404,8 @@ const playApi = {
   async chat(payload) {
     const base = playgroundBase();
     if (!base) throw new Error("Configure REACT_APP_NODE_URL ou REACT_APP_BACKEND_URL");
-    const { data } = await axios.post(`${base}/chat`, payload);
+    const headers = await authHeaders({ "Content-Type": "application/json" });
+    const { data } = await axios.post(`${base}/chat`, payload, { headers });
     return data;
   },
   async transcribe(file, whisperModel) {
@@ -404,19 +419,21 @@ const playApi = {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      const headers = await authHeaders({ "Content-Type": "application/json" });
       const { data } = await axios.post(`${base}/transcribe`, {
         audioBase64: b64,
         fileName: file.name,
         whisper_model: whisperModel,
-      });
+      }, { headers });
       return data;
     }
 
     const fd = new FormData();
     fd.append("audio", file);
     if (whisperModel) fd.append("whisper_model", whisperModel);
+    const headers = await authHeaders();
     const { data } = await axios.post(`${base}/transcribe`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: { ...headers, "Content-Type": "multipart/form-data" },
     });
     return data;
   },

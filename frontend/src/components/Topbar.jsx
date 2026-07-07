@@ -1,6 +1,16 @@
-import { Menu, Power, RefreshCw } from "lucide-react";
+import { Menu, Power, RefreshCw, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { LOGOUT } from "@/constants/testIds/auth";
 
 export default function Topbar({ title, crumb, botActive, onToggleBot, onOpenSidebar }) {
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
   return (
     <header
       className="sticky top-0 z-20 h-14 sm:h-16 border-b border-[var(--vsm-border)] bg-[var(--vsm-black)]/85 backdrop-blur-xl
@@ -26,6 +36,19 @@ export default function Topbar({ title, crumb, botActive, onToggleBot, onOpenSid
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {profile?.email && (
+          <span className="hidden lg:block text-[10px] text-[var(--vsm-grey)] truncate max-w-[140px]">
+            {profile.full_name || profile.email}
+          </span>
+        )}
+        <button
+          onClick={handleLogout}
+          data-testid={LOGOUT.button}
+          className="hidden sm:flex items-center gap-2 px-3 py-2 border border-[var(--vsm-border-strong)] text-[var(--vsm-grey)] hover:text-[var(--vsm-red)] hover:border-[var(--vsm-red)] transition-colors text-xs uppercase tracking-wider"
+          title="Déconnexion"
+        >
+          <LogOut size={14} /> Sortir
+        </button>
         <button
           onClick={() => window.location.reload()}
           className="hidden sm:flex items-center gap-2 px-3 py-2 border border-[var(--vsm-border-strong)] text-[var(--vsm-grey)] hover:text-[var(--vsm-red)] hover:border-[var(--vsm-red)] transition-colors text-xs uppercase tracking-wider"
